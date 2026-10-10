@@ -17,7 +17,7 @@
 酒馆助手 → 脚本库（全局 / 预设 / 角色卡任选）→ 新建脚本 → 只粘这一行 → 保存启用：
 
 ```js
-import 'https://cdn.jsdelivr.net/gh/fjForever/toy-link@main/TOY-LINK_装置模拟器.js';
+import 'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/TOY-LINK_装置模拟器.js';
 ```
 
 ### 方式二：手动粘贴
