@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.10.5 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.10.6 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -16,11 +16,11 @@ function TOYLINK_BOOT() {
    *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
    *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    if (window.__TOYLINK__.version === "1.10.5") {
+    if (window.__TOYLINK__.version === "1.10.6") {
       window.__TOYLINK__.toggle();
       return;
     }
-    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.10.5"); } catch (e) {}
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.10.6"); } catch (e) {}
     try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
     try {
       var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
@@ -101,7 +101,7 @@ function TOYLINK_BOOT() {
   var ball = DOC.createElement("div");
   ball.id = "__toylink_ball__";
   ball.textContent = "◈";
-  ball.title = "TOY·LINK 控制器 v1.10.5";
+  ball.title = "TOY·LINK 控制器 v1.10.6";
   ball.style.cssText = "position:fixed;right:14px;bottom:104px;width:50px;height:50px;"
     + "border-radius:50%;display:grid;place-items:center;font-size:20px;color:#fff;"
     + "background:linear-gradient(140deg,#ff2f6e,#7a1bd4);z-index:2147483000;"
@@ -116,7 +116,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.10.5';
+  var VERSION = '1.10.6';
   var BUILD_DATE = '2026-10-10';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2498,6 +2498,9 @@ function TOYLINK_BOOT() {
     wakeLoop();
     setInterval(heartbeat, 50);   // rAF 被挂起时的兜底心跳；装置关着时自动降到 ~4Hz
 
+    // 后台问一次有没有新版，不阻塞启动、失败也不影响使用
+    try { selfUpdate(); } catch (e) { /* noop */ }
+
     var verEl = $('#ver-hint');
     if (verEl) verEl.textContent = 'TOY·LINK v' + VERSION + '（' + BUILD_DATE + '）';
     var brandVer = $('#brand-ver');
@@ -2515,6 +2518,134 @@ function TOYLINK_BOOT() {
         }
       }, 1200);
     }
+  }
+
+  /* =========================================================
+   * 自更新
+   *
+   * 脚本库里存的本来就是「本体自己」。启动时问一次版本指针，发现比手上这个
+   * 新，就把新本体写回脚本库 —— 下次启动直接跑新版，不再需要网络。
+   *
+   * 为什么是这个方案，而不是一行 `import '网址'`：
+   *   · jsDelivr 给固定网址的响应头是 max-age=604800，浏览器缓存 7 天，
+   *     purge 只清 CDN 那一层，够不着浏览器 → 热更新失效。
+   *   · GitHub raw 缓存只有 5 分钟，但给的是 text/plain 加 nosniff，
+   *     而 import 按规范要求 JavaScript 的 MIME，浏览器直接拒绝执行。
+   * 两头都堵，所以只能自己拿 fetch 拉（fetch 不看 MIME），再写回脚本库。
+   * 好处是更新过的本体落在本地，之后断网也照常跑。
+   *
+   * 只在酒馆助手脚本环境里生效；当前端卡加载时这些接口不存在，直接跳过。
+   * ======================================================= */
+  var UPD_POINTER = 'https://raw.githubusercontent.com/fJForever/toy-link/main/version.txt';
+  var UPD_BASES = [
+    'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/dist/',
+    'https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/dist/',
+    'https://raw.githubusercontent.com/fJForever/toy-link/main/dist/'
+  ];
+
+  // 脚本里这些是全局函数；导出到 TavernHelper 的也试一下，两边都探
+  function thai(name) {
+    try { if (typeof window[name] === 'function') return window[name]; } catch (e) { /* noop */ }
+    try {
+      if (typeof TavernHelper !== 'undefined' && TavernHelper && typeof TavernHelper[name] === 'function') {
+        return TavernHelper[name].bind(TavernHelper);
+      }
+    } catch (e) { /* noop */ }
+    return null;
+  }
+
+  function newerThan(mine, theirs) {
+    var a = String(mine).split('.').map(Number);
+    var b = String(theirs).split('.').map(Number);
+    for (var i = 0; i < 3; i++) {
+      var x = a[i] || 0, y = b[i] || 0;
+      if (y > x) return true;
+      if (y < x) return false;
+    }
+    return false;
+  }
+
+  function fetchText(url, ms) {
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
+    return fetch(url, { cache: 'no-store', signal: ctl ? ctl.signal : undefined }).then(function (r) {
+      if (timer) clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }, function (e) {
+      if (timer) clearTimeout(timer);
+      throw e;
+    });
+  }
+
+  /* 把自己这个脚本的 content 换成新版本。
+     逐个 scope 试，只在真的找到自己那条（id 对得上）时才改，其余原样返回。 */
+  function writeBackSelf(code, done) {
+    var upd = thai('updateScriptTreesWith');
+    var idFn = thai('getScriptId');
+    if (!upd || !idFn) { done(false, '这个环境没有脚本管理接口'); return; }
+    var myId = '';
+    try { myId = idFn() || ''; } catch (e) { /* noop */ }
+    if (!myId) { done(false, '拿不到当前脚本 id'); return; }
+
+    var scopes = ['global', 'preset', 'character'];
+    var i = 0;
+    (function nextScope() {
+      if (i >= scopes.length) { done(false, '三个作用域里都没找到自己'); return; }
+      var scope = scopes[i++];
+      var touched = false;
+      try {
+        upd(function (trees) {
+          (function walk(list) {
+            if (!list || !list.length) return;
+            for (var k = 0; k < list.length; k++) {
+              var it = list[k];
+              if (!it) continue;
+              if (it.type === 'folder' && it.scripts) walk(it.scripts);
+              else if (it.id === myId) { it.content = code; touched = true; }
+            }
+          })(trees);
+          return trees;
+        }, { type: scope });
+      } catch (e) { /* 这个作用域不存在或没权限，换下一个 */ }
+      if (touched) { done(true, scope); return; }
+      nextScope();
+    })();
+  }
+
+  function selfUpdate() {
+    // 不在脚本里（前端卡 / 演示模式）就没必要跑
+    if (!thai('getScriptId')) return;
+    fetchText(UPD_POINTER, 6000).then(function (txt) {
+      var remote = String(txt || '').trim();
+      if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(remote)) return;
+      if (!newerThan(VERSION, remote)) return;   // 自己不比它旧，什么都不做
+
+      console.log('[TOY·LINK] 发现新版 ' + remote + '（当前 ' + VERSION + '），准备更新');
+      var file = 'TOY-LINK-' + remote + '.js';
+      var j = 0;
+      (function tryNext() {
+        if (j >= UPD_BASES.length) { console.log('[TOY·LINK] 所有源都不通，保持当前版本'); return; }
+        var url = UPD_BASES[j++] + file;
+        fetchText(url, 15000).then(function (code) {
+          // 宁可停在当前版本，也不把半截内容写进用户的脚本库
+          if (!code || code.length < 50000) throw new Error('内容异常 ' + (code ? code.length : 0) + ' 字符');
+          writeBackSelf(code, function (ok, where) {
+            if (ok) {
+              console.log('[TOY·LINK] 已写入脚本库（' + where + '），刷新页面生效');
+              try { toastr.info('TOY·LINK 已更新到 v' + remote + '，刷新页面生效', 'TOY·LINK'); } catch (e) { /* noop */ }
+            } else {
+              console.log('[TOY·LINK] 写回失败：' + where);
+            }
+          });
+        }, function (e) {
+          console.log('[TOY·LINK] 源失败 ' + url + '：' + ((e && e.message) || e));
+          tryNext();
+        });
+      })();
+    }).catch(function (e) {
+      console.log('[TOY·LINK] 更新检查跳过：' + ((e && e.message) || e));
+    });
   }
 
   if (document.readyState === 'loading') {
@@ -2671,7 +2802,7 @@ function TOYLINK_BOOT() {
   }, 900);
 
   window.__TOYLINK__ = {
-    version: "1.10.5",
+    version: "1.10.6",
     host: host, root: root, ball: ball, page: PAGE,
     open: open, collapse: collapse, toggle: toggle,
     stop: function () {

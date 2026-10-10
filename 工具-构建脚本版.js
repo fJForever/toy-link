@@ -598,25 +598,28 @@ console.log('  JS   ' + js.length + ' 字符');
  */
 const IMPORT_FILE = path.join(DIR, 'TOY-LINK脚本.json');
 const SCRIPT_INFO = [
-  'v' + VERSION + ' · 装置模拟器',
+  'v' + VERSION + ' · 装置模拟器（自动更新）',
   '',
   '在酒馆界面右下角放一个可拖动的悬浮窗，点开是手机样式的遥控器：',
-  '八种震动模式、频率、强度、限时，状态实时同步给角色，角色据此给出身体反馈。',
+  '九种震动模式、频率、强度、限时，状态实时同步给角色，角色据此给出身体反馈。',
   '',
-  '安装后请手动打开它右边的开关（酒馆助手导入的脚本默认是关闭状态）。',
-  '还需要在世界书里导入 世界书-TOY-LINK.json 并挂到角色卡上，角色才知道怎么反应。',
+  '【自动更新】启动时会问一次版本指针，发现新版就把脚本库里的自己换成新本体 ——',
+  '所以装这一次就够，以后作者发版你刷新页面就是新版，不用重新导入。',
+  '本体存在本地脚本库里，更新过之后断网也照常工作。',
+  '',
+  '【装完之后】请手动打开它右边的开关（酒馆助手导入的脚本默认是关闭状态）。',
+  '世界书不用另外导入，脚本启动时会自动写一本并挂到当前角色卡；',
+  '不想让它自动写，在设置页关掉「自动建立并绑定世界书」。',
   '',
   '用法：点开面板 → 点「启 动」→ 选模式调参数。',
-  '反应可以在「设置」页切换：留在酒馆聊天里，或只显示在面板内。',
-  '',
   '面板顶部 ✕ 收起，右下角悬浮球随时再打开。'
 ].join('\n');
 
 fs.writeFileSync(IMPORT_FILE, JSON.stringify({
   type: 'script',
   enabled: true,
-  name: 'TOY·LINK 装置模拟器（离线）',
-  id: 'toylink-device-simulator-v' + VERSION.split('.').join('-'),
+  name: 'TOY·LINK 装置模拟器',
+  id: 'toylink-device-simulator',
   content: fs.readFileSync(OUT, 'utf8'),
   info: SCRIPT_INFO,
   button: {
