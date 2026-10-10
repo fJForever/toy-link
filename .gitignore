@@ -2,8 +2,10 @@
 #  发布「通用插件」那条线。仓库内容：
 #    index.html                界面与逻辑源码（唯一真源）
 #    工具-构建脚本版.js          从源码生成产物
-#    加载器-粘进脚本库.js         使用者往脚本库里粘的那一段
-#    version.txt               版本指针，加载器靠它知道该拉哪一版
+#    加载器.json                脚本库「导入」直接选它 · 在线版（推荐）
+#    TOY-LINK脚本.json          脚本库「导入」直接选它 · 离线版（不自动更新）
+#    加载器-粘进脚本库.js         同一段加载器的纯文本，给想手动粘的人
+#    version.txt               版本指针 —— 加载器靠它知道该拉哪一版，不能删
 #    dist/TOY-LINK-<版本>.js    按版本命名的本体，每版新 URL
 #    dist/latest.js            指针失效时的兜底
 #    README.md / LICENSE / 两个配置
@@ -19,6 +21,8 @@
 !/LICENSE
 !/index.html
 !/工具-构建脚本版.js
+!/加载器.json
+!/TOY-LINK脚本.json
 !/加载器-粘进脚本库.js
 !/version.txt
 !/dist/

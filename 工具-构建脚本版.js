@@ -615,7 +615,7 @@ const SCRIPT_INFO = [
 fs.writeFileSync(IMPORT_FILE, JSON.stringify({
   type: 'script',
   enabled: true,
-  name: 'TOY·LINK 装置模拟器',
+  name: 'TOY·LINK 装置模拟器（离线）',
   id: 'toylink-device-simulator-v' + VERSION.split('.').join('-'),
   content: fs.readFileSync(OUT, 'utf8'),
   info: SCRIPT_INFO,
@@ -626,5 +626,35 @@ fs.writeFileSync(IMPORT_FILE, JSON.stringify({
   data: {},
   export_with: { data: true, button: true }
 }, null, 2), 'utf8');
+
+/* ---------- 加载器的可导入版本 ----------
+ * 同一段加载器，打包成脚本库「导入」能直接选的文件。
+ * 不带 button 字段：按钮由本体自己注册，加载器只负责把本体拉下来执行。 */
+const LOADER_JSON = path.join(DIR, '加载器.json');
+fs.writeFileSync(LOADER_JSON, JSON.stringify({
+  type: 'script',
+  enabled: true,
+  name: 'TOY·LINK 装置模拟器（在线）',
+  id: 'toylink-loader',
+  content: LOADER,
+  info: [
+    'v' + VERSION + ' 时期的加载器 · 在线版',
+    '',
+    '装上之后不用再管：作者发版，你刷新酒馆页面就是新版，这里永远不用换。',
+    '',
+    '它每次启动先去问一个版本指针（version.txt），拿到版本号再拉对应的本体执行。',
+    '每版都是新文件名、也就是新网址，所以不会被浏览器缓存挡住 —— 这正是',
+    '一行 import 指向固定网址做不到的，那种网址会被缓存 7 天。',
+    '',
+    '三个源轮换：jsDelivr → fastly → GitHub raw；拿不到指针时退回 latest.js。',
+    '需要联网。要离线用就导入离线版那个 JSON。',
+    '',
+    '导入后请手动打开右边的开关（酒馆助手导入的脚本默认是关闭状态）。'
+  ].join('\n'),
+  button: { enabled: false, buttons: [] },
+  data: {},
+  export_with: { data: false, button: false }
+}, null, 2), 'utf8');
+console.log('已生成: ' + path.basename(LOADER_JSON) + '  (脚本库「导入」可直接选它 · 在线版)');
 
 console.log('已生成: ' + path.basename(IMPORT_FILE) + '  (脚本库「导入」可直接选它)');
