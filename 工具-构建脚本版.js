@@ -37,7 +37,6 @@ if (!verM) console.warn('警告：index.html 里没找到 VERSION，版本号回
 // 发版用的路径 —— 依赖 VERSION，必须放在它后面
 const DIST = path.join(DIR, 'dist');
 const OUT_VERSIONED = path.join(DIST, 'TOY-LINK-' + VERSION + '.js');
-const OUT_LATEST = path.join(DIST, 'latest.js');
 const POINTER_FILE = path.join(DIR, 'version.txt');
 
 /* ---------- 抽取 style ---------- */
@@ -487,104 +486,25 @@ fs.writeFileSync(OUT, ARTIFACT, 'utf8');
  * 所以改成「版本指针 + 按版本命名的文件」：
  *   version.txt                 指针，用 GitHub raw 取（缓存只有几分钟）
  *   dist/TOY-LINK-<版本>.js      本体，每次发版一个新文件名 → 新 URL → 必然回源
- *   dist/latest.js              指针失效时的兜底
- * 加载器每次启动问一次指针，按版本号拼地址，拉下来直接执行。
+ *
+ * 脚本本体自带自更新：启动时问一次指针，比自己新就把脚本库里的自己换成新本体。
+ * （曾经还有一套「加载器」方案 —— 脚本库只放几十行，每次启动拉本体执行。
+ *   自更新验证可用之后已经删掉，加载器唯一多出来的价值是首次少下载 155 KB，
+ *   而代价是每次启动都要联网、且本体不落本地、断网就加载不出来。）
  */
 fs.mkdirSync(DIST, { recursive: true });
 fs.writeFileSync(OUT_VERSIONED, ARTIFACT, 'utf8');
-fs.writeFileSync(OUT_LATEST, ARTIFACT, 'utf8');
 fs.writeFileSync(POINTER_FILE, VERSION + '\n', 'utf8');
 
 const OWNER = 'fJForever';
 const REPO = 'toy-link';
 const BRANCH = 'main';
 
-const LOADER = [
-  '/* ============================================================',
-  ' * TOY·LINK 装置模拟器 · 在线加载器 v' + VERSION + ' 时期的分发结构',
-  ' *',
-  ' * 脚本库里只放这一段，以后再也不用换。它每次启动做的事：',
-  ' *   1. 拉 version.txt，问「现在该用哪一版」',
-  ' *   2. 按版本号拼出本体地址 —— 每版都是新文件名，所以是新 URL，缓存挡不住',
-  ' *   3. 三个源依次试，哪个通用哪个（jsDelivr / fastly / GitHub raw）',
-  ' *   4. 在全局作用域执行本体',
-  ' *',
-  ' * 为什么绕这一圈：固定地址的 CDN 响应带 7 天浏览器缓存，purge 清不到浏览器。',
-  ' * 指针用 GitHub raw，缓存只有几分钟，比 CDN 的 12 小时可靠得多。',
-  ' *',
-  ' * 安装：酒馆助手 → 脚本库 → 新建脚本 → 全文粘贴这一段 → 保存启用。',
-  ' * 之后作者发版，你刷新酒馆页面就是新版，不用再动这里。',
-  ' * ============================================================ */',
-  '(async function () {',
-  '  var OWNER = "' + OWNER + '", REPO = "' + REPO + '", BRANCH = "' + BRANCH + '";',
-  '',
-  '  // 日志只用 console.log —— 酒馆助手会吞掉脚本 iframe 里的 warn / info',
-  '  function log(m) { try { console.log("[TOY·LINK 加载器] " + m); } catch (e) {} }',
-  '',
-  '  var POINTER = "https://raw.githubusercontent.com/" + OWNER + "/" + REPO + "/" + BRANCH + "/version.txt";',
-  '  var BASES = [',
-  '    "https://cdn.jsdelivr.net/gh/" + OWNER + "/" + REPO + "@" + BRANCH + "/dist/",',
-  '    "https://fastly.jsdelivr.net/gh/" + OWNER + "/" + REPO + "@" + BRANCH + "/dist/",',
-  '    "https://raw.githubusercontent.com/" + OWNER + "/" + REPO + "/" + BRANCH + "/dist/"',
-  '  ];',
-  '',
-  '  // 带闸刀的 fetch：被墙的域不会报错，会一直挂着，必须自己超时',
-  '  function get(url, ms) {',
-  '    var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;',
-  '    var timer = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;',
-  '    return fetch(url, { cache: "no-store", signal: ctl ? ctl.signal : undefined }).then(',
-  '      function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }',
-  '    ).then(function (t) { if (timer) clearTimeout(timer); return t; },',
-  '           function (e) { if (timer) clearTimeout(timer); throw e; });',
-  '  }',
-  '',
-  '  var ver = "";',
-  '  try {',
-  '    var raw = (await get(POINTER, 6000)).trim();',
-  '    // 只认干净的版本号，指针文件万一被写坏也不会拼出奇怪的 URL',
-  '    if (/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(raw)) { ver = raw; log("版本指针 = " + ver); }',
-  '    else log("指针内容不合法，忽略：" + raw.slice(0, 40));',
-  '  } catch (e) { log("拿不到指针：" + ((e && e.message) || e)); }',
-  '',
-  '  // 指针拿不到就退回 latest.js，至少还能跑，只是可能落后一个版本',
-  '  var file = ver ? ("TOY-LINK-" + ver + ".js") : "latest.js";',
-  '',
-  '  var code = null, lastErr = null;',
-  '  for (var i = 0; i < BASES.length && code === null; i++) {',
-  '    var url = BASES[i] + file;',
-  '    try {',
-  '      var t = await get(url, 12000);',
-  '      if (!t || t.length < 1000) throw new Error("内容异常 " + (t ? t.length : 0) + " 字符");',
-  '      code = t;',
-  '      log("已加载 " + url + "（" + t.length + " 字符）");',
-  '    } catch (e) { lastErr = e; log("失败 " + url + "：" + ((e && e.message) || e)); }',
-  '  }',
-  '',
-  '  if (code === null) {',
-  '    try { toastr.error("TOY·LINK 加载失败，检查网络后刷新重试", "TOY·LINK"); } catch (e) {}',
-  '    log("所有源都不通：" + ((lastErr && lastErr.message) || lastErr));',
-  '    return;',
-  '  }',
-  '',
-  '  // 间接 eval：(0, eval) 在全局作用域执行，本体里的函数才会挂到 window 上。',
-  '  // 直接 eval(code) 会被关在这个 async 函数里，面板挂载后引用全丢。',
-  '  try { (0, eval)(code); } catch (e) {',
-  '    try { toastr.error("TOY·LINK 执行出错：" + ((e && e.message) || e), "TOY·LINK"); } catch (e2) {}',
-  '    log("执行失败：" + ((e && e.message) || e));',
-  '  }',
-  '})();',
-  ''
-].join('\n');
-
-const INSTALL_FILE = path.join(DIR, '加载器-粘进脚本库.js');
-fs.writeFileSync(INSTALL_FILE, LOADER, 'utf8');
 
 const kb = (Buffer.byteLength(ARTIFACT, 'utf8') / 1024).toFixed(1);
 console.log('已生成: ' + path.basename(OUT) + '  (' + kb + ' kB, 本地用)');
 console.log('已生成: dist/' + path.basename(OUT_VERSIONED) + '  (' + kb + ' kB, 发版用)');
-console.log('已生成: dist/latest.js  (指针失效时兜底)');
 console.log('已生成: version.txt  → ' + VERSION);
-console.log('已生成: ' + path.basename(INSTALL_FILE) + '  (整段粘进脚本库)');
 console.log('  CSS  ' + css.length + ' 字符');
 console.log('  HTML ' + shell.length + ' 字符');
 console.log('  JS   ' + js.length + ' 字符');
@@ -630,34 +550,4 @@ fs.writeFileSync(IMPORT_FILE, JSON.stringify({
   export_with: { data: true, button: true }
 }, null, 2), 'utf8');
 
-/* ---------- 加载器的可导入版本 ----------
- * 同一段加载器，打包成脚本库「导入」能直接选的文件。
- * 不带 button 字段：按钮由本体自己注册，加载器只负责把本体拉下来执行。 */
-const LOADER_JSON = path.join(DIR, '加载器.json');
-fs.writeFileSync(LOADER_JSON, JSON.stringify({
-  type: 'script',
-  enabled: true,
-  name: 'TOY·LINK 装置模拟器（在线）',
-  id: 'toylink-loader',
-  content: LOADER,
-  info: [
-    'v' + VERSION + ' 时期的加载器 · 在线版',
-    '',
-    '装上之后不用再管：作者发版，你刷新酒馆页面就是新版，这里永远不用换。',
-    '',
-    '它每次启动先去问一个版本指针（version.txt），拿到版本号再拉对应的本体执行。',
-    '每版都是新文件名、也就是新网址，所以不会被浏览器缓存挡住 —— 这正是',
-    '一行 import 指向固定网址做不到的，那种网址会被缓存 7 天。',
-    '',
-    '三个源轮换：jsDelivr → fastly → GitHub raw；拿不到指针时退回 latest.js。',
-    '需要联网。要离线用就导入离线版那个 JSON。',
-    '',
-    '导入后请手动打开右边的开关（酒馆助手导入的脚本默认是关闭状态）。'
-  ].join('\n'),
-  button: { enabled: false, buttons: [] },
-  data: {},
-  export_with: { data: false, button: false }
-}, null, 2), 'utf8');
-console.log('已生成: ' + path.basename(LOADER_JSON) + '  (脚本库「导入」可直接选它 · 在线版)');
-
-console.log('已生成: ' + path.basename(IMPORT_FILE) + '  (脚本库「导入」可直接选它)');
+console.log('已生成: ' + path.basename(IMPORT_FILE) + '  (脚本库「导入」直接选它 · 自带更新)');
