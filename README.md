@@ -92,6 +92,6 @@ import 'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/TOY-LINK_装置模�
 
 ## 许可
 
-MIT，见 `LICENSE`。
+**不是 MIT。** 可读、可学、可私下改着玩；**禁止商用，禁止二改后公开发布**；参考了要署名 fJForever 并附原帖地址。全文见 `LICENSE`。
 
 用到的第三方：无。纯手写，零依赖。
