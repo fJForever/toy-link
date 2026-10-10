@@ -26,13 +26,19 @@ const path = require('path');
 
 const DIR = __dirname;
 const SRC = path.join(DIR, 'index.html');
-const OUT = path.join(DIR, 'TOY-LINK_装置模拟器.js');
+const OUT = path.join(DIR, 'TOY-LINK_装置模拟器.js');   // 本地用：固定名，方便直接打开
 
 const src = fs.readFileSync(SRC, 'utf8');
 
 const verM = src.match(/var VERSION = '([^']+)'/);
 const VERSION = verM ? verM[1] : '0.0.0';
 if (!verM) console.warn('警告：index.html 里没找到 VERSION，版本号回落为 ' + VERSION);
+
+// 发版用的路径 —— 依赖 VERSION，必须放在它后面
+const DIST = path.join(DIR, 'dist');
+const OUT_VERSIONED = path.join(DIST, 'TOY-LINK-' + VERSION + '.js');
+const OUT_LATEST = path.join(DIST, 'latest.js');
+const POINTER_FILE = path.join(DIR, 'version.txt');
 
 /* ---------- 抽取 style ---------- */
 const styleM = src.match(/<style>([\s\S]*?)<\/style>/);
@@ -469,42 +475,116 @@ const body = [
   '}'
 ].join('\n');
 
-fs.writeFileSync(OUT, HEADER + body + '\n', 'utf8');
+const ARTIFACT = HEADER + body + '\n';
+fs.writeFileSync(OUT, ARTIFACT, 'utf8');
 
-/* ---------- 生成一行安装脚本（import 版） ----------
- * 酒馆助手的内置库与 MVU 都用 `import '网络链接'` 分发（CHANGELOG 3.1.0）：
- * 把代码放到任意可访问的地址，脚本库里只写一行 import，之后自动保持最新。
- * 发布地址在这里改；留占位符时不会影响其它产物。 */
-const PUBLISH_BASE = 'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/';
-const INSTALL_FILE = path.join(DIR, '安装脚本-import版.js');
-fs.writeFileSync(INSTALL_FILE, [
-  '/**',
-  ' * TOY·LINK 装置模拟器 v' + VERSION + ' · 一行安装脚本',
+/* ---------- 分发用的三件套 ----------
+ * 为什么不用一行 `import '固定地址'`：
+ * jsDelivr 给固定地址的响应头是 `Cache-Control: public, max-age=604800` ——
+ * 浏览器会把那个 JS 存 7 天，而 purge 只能清 CDN 那一层，够不着浏览器。
+ * 结果就是作者推了新代码、用户刷了页面、看到的还是旧版，且没有任何报错。
+ *
+ * 所以改成「版本指针 + 按版本命名的文件」：
+ *   version.txt                 指针，用 GitHub raw 取（缓存只有几分钟）
+ *   dist/TOY-LINK-<版本>.js      本体，每次发版一个新文件名 → 新 URL → 必然回源
+ *   dist/latest.js              指针失效时的兜底
+ * 加载器每次启动问一次指针，按版本号拼地址，拉下来直接执行。
+ */
+fs.mkdirSync(DIST, { recursive: true });
+fs.writeFileSync(OUT_VERSIONED, ARTIFACT, 'utf8');
+fs.writeFileSync(OUT_LATEST, ARTIFACT, 'utf8');
+fs.writeFileSync(POINTER_FILE, VERSION + '\n', 'utf8');
+
+const OWNER = 'fJForever';
+const REPO = 'toy-link';
+const BRANCH = 'main';
+
+const LOADER = [
+  '/* ============================================================',
+  ' * TOY·LINK 装置模拟器 · 在线加载器 v' + VERSION + ' 时期的分发结构',
   ' *',
-  ' * 用法：',
-  ' *   1. 把 TOY-LINK_装置模拟器.js 传到一个公开仓库（GitHub / Gist / 自己的服务器都行）',
-  ' *   2. 酒馆助手 → 脚本库（全局 / 预设 / 角色卡任选）→ 新建脚本 → 粘贴下面那一行，把地址换成你自己的',
-  ' *   3. 保存并启用。之后每次重新加载酒馆页面都会去那个地址拉代码，升级不用重新导入',
+  ' * 脚本库里只放这一段，以后再也不用换。它每次启动做的事：',
+  ' *   1. 拉 version.txt，问「现在该用哪一版」',
+  ' *   2. 按版本号拼出本体地址 —— 每版都是新文件名，所以是新 URL，缓存挡不住',
+  ' *   3. 三个源依次试，哪个通用哪个（jsDelivr / fastly / GitHub raw）',
+  ' *   4. 在全局作用域执行本体',
   ' *',
-  ' * 改完之后多久生效 —— 这一步不像看起来那么即时，有两层：',
-  ' *   · CDN 层：jsDelivr 对 @main 这类分支引用有缓存，push 后不会立刻变。',
-  ' *     想马上生效，push 完访问一次 purge 地址，它返回一段 JSON 表示刷新结果：',
-  ' *       https://purge.jsdelivr.net/gh/<用户名>/<仓库名>@main/TOY-LINK_装置模拟器.js',
-  ' *   · 酒馆层：CDN 刷新后还要重新加载酒馆页面，脚本才会重新 import 一次。',
-  ' *   想彻底绕开缓存，把 @main 换成 commit hash 或 tag —— 那种地址内容恒定，代价是每次改都要换 URL。',
+  ' * 为什么绕这一圈：固定地址的 CDN 响应带 7 天浏览器缓存，purge 清不到浏览器。',
+  ' * 指针用 GitHub raw，缓存只有几分钟，比 CDN 的 12 小时可靠得多。',
   ' *',
-  ' * 必须用公开仓库：jsDelivr 拉私有仓库需要额外令牌，做不到零配置。',
-  ' *',
-  ' * 原理：酒馆助手官方内置库和 MVU 都用这种 import 方式分发（见其 CHANGELOG 3.1.0）。',
-  ' */',
+  ' * 安装：酒馆助手 → 脚本库 → 新建脚本 → 全文粘贴这一段 → 保存启用。',
+  ' * 之后作者发版，你刷新酒馆页面就是新版，不用再动这里。',
+  ' * ============================================================ */',
+  '(async function () {',
+  '  var OWNER = "' + OWNER + '", REPO = "' + REPO + '", BRANCH = "' + BRANCH + '";',
   '',
-  "import '" + PUBLISH_BASE + "TOY-LINK_装置模拟器.js';",
+  '  // 日志只用 console.log —— 酒馆助手会吞掉脚本 iframe 里的 warn / info',
+  '  function log(m) { try { console.log("[TOY·LINK 加载器] " + m); } catch (e) {} }',
+  '',
+  '  var POINTER = "https://raw.githubusercontent.com/" + OWNER + "/" + REPO + "/" + BRANCH + "/version.txt";',
+  '  var BASES = [',
+  '    "https://cdn.jsdelivr.net/gh/" + OWNER + "/" + REPO + "@" + BRANCH + "/dist/",',
+  '    "https://fastly.jsdelivr.net/gh/" + OWNER + "/" + REPO + "@" + BRANCH + "/dist/",',
+  '    "https://raw.githubusercontent.com/" + OWNER + "/" + REPO + "/" + BRANCH + "/dist/"',
+  '  ];',
+  '',
+  '  // 带闸刀的 fetch：被墙的域不会报错，会一直挂着，必须自己超时',
+  '  function get(url, ms) {',
+  '    var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;',
+  '    var timer = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;',
+  '    return fetch(url, { cache: "no-store", signal: ctl ? ctl.signal : undefined }).then(',
+  '      function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.text(); }',
+  '    ).then(function (t) { if (timer) clearTimeout(timer); return t; },',
+  '           function (e) { if (timer) clearTimeout(timer); throw e; });',
+  '  }',
+  '',
+  '  var ver = "";',
+  '  try {',
+  '    var raw = (await get(POINTER, 6000)).trim();',
+  '    // 只认干净的版本号，指针文件万一被写坏也不会拼出奇怪的 URL',
+  '    if (/^[0-9]+\\.[0-9]+\\.[0-9]+$/.test(raw)) { ver = raw; log("版本指针 = " + ver); }',
+  '    else log("指针内容不合法，忽略：" + raw.slice(0, 40));',
+  '  } catch (e) { log("拿不到指针：" + ((e && e.message) || e)); }',
+  '',
+  '  // 指针拿不到就退回 latest.js，至少还能跑，只是可能落后一个版本',
+  '  var file = ver ? ("TOY-LINK-" + ver + ".js") : "latest.js";',
+  '',
+  '  var code = null, lastErr = null;',
+  '  for (var i = 0; i < BASES.length && code === null; i++) {',
+  '    var url = BASES[i] + file;',
+  '    try {',
+  '      var t = await get(url, 12000);',
+  '      if (!t || t.length < 1000) throw new Error("内容异常 " + (t ? t.length : 0) + " 字符");',
+  '      code = t;',
+  '      log("已加载 " + url + "（" + t.length + " 字符）");',
+  '    } catch (e) { lastErr = e; log("失败 " + url + "：" + ((e && e.message) || e)); }',
+  '  }',
+  '',
+  '  if (code === null) {',
+  '    try { toastr.error("TOY·LINK 加载失败，检查网络后刷新重试", "TOY·LINK"); } catch (e) {}',
+  '    log("所有源都不通：" + ((lastErr && lastErr.message) || lastErr));',
+  '    return;',
+  '  }',
+  '',
+  '  // 间接 eval：(0, eval) 在全局作用域执行，本体里的函数才会挂到 window 上。',
+  '  // 直接 eval(code) 会被关在这个 async 函数里，面板挂载后引用全丢。',
+  '  try { (0, eval)(code); } catch (e) {',
+  '    try { toastr.error("TOY·LINK 执行出错：" + ((e && e.message) || e), "TOY·LINK"); } catch (e2) {}',
+  '    log("执行失败：" + ((e && e.message) || e));',
+  '  }',
+  '})();',
   ''
-].join('\n'), 'utf8');
+].join('\n');
 
-const kb = (Buffer.byteLength(fs.readFileSync(OUT), 'utf8') / 1024).toFixed(1);
-console.log('已生成: ' + path.basename(OUT) + '  (' + kb + ' kB)');
-console.log('已生成: ' + path.basename(INSTALL_FILE) + '  (一行 import 版安装脚本)');
+const INSTALL_FILE = path.join(DIR, '加载器-粘进脚本库.js');
+fs.writeFileSync(INSTALL_FILE, LOADER, 'utf8');
+
+const kb = (Buffer.byteLength(ARTIFACT, 'utf8') / 1024).toFixed(1);
+console.log('已生成: ' + path.basename(OUT) + '  (' + kb + ' kB, 本地用)');
+console.log('已生成: dist/' + path.basename(OUT_VERSIONED) + '  (' + kb + ' kB, 发版用)');
+console.log('已生成: dist/latest.js  (指针失效时兜底)');
+console.log('已生成: version.txt  → ' + VERSION);
+console.log('已生成: ' + path.basename(INSTALL_FILE) + '  (整段粘进脚本库)');
 console.log('  CSS  ' + css.length + ' 字符');
 console.log('  HTML ' + shell.length + ' 字符');
 console.log('  JS   ' + js.length + ' 字符');
