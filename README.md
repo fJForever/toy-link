@@ -95,3 +95,28 @@ import 'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/TOY-LINK_装置模�
 **不是 MIT。** 可读、可学、可私下改着玩；**禁止商用，禁止二改后公开发布**；参考了要署名 fJForever 并附原帖地址。全文见 `LICENSE`。
 
 用到的第三方：无。纯手写，零依赖。
+
+---
+
+## 自己改
+
+仓库里带源码，是这一条链：
+
+```text
+index.html  ──(node 工具-构建脚本版.js)──▶  TOY-LINK_装置模拟器.js
+  源码                                        产物（使用者下载的）
+```
+
+**改完源码必须重跑构建再提交**，否则仓库里的产物还是旧版 —— 而使用者只会下载产物，不会构建。
+
+```powershell
+git clone https://github.com/fJForever/toy-link.git
+cd toy-link
+node 工具-构建脚本版.js      # 零依赖，只要 Node
+```
+
+不需要 `npm install`，构建脚本只用 Node 内置模块。
+
+`index.html` 按注释分了十二段，都能找到对应位置。加震动模式在 `MODES` 数组里追加一项；两套主题配色是 `:root` 和 `#shell.tgt-user` 里的两组 CSS 变量，改那两组数值就能整机换色（记得同步 `THEME_RGB` —— canvas 读不到 CSS 变量）。
+
+自定义许可是禁止二改发布的，所以改完自己用没问题，发出去要先问作者。
