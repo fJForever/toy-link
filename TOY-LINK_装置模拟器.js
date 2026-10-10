@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.10.2 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.10.3 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -87,7 +87,7 @@ function TOYLINK_BOOT() {
   var ball = DOC.createElement("div");
   ball.id = "__toylink_ball__";
   ball.textContent = "◈";
-  ball.title = "TOY·LINK 控制器 v1.10.2";
+  ball.title = "TOY·LINK 控制器 v1.10.3";
   ball.style.cssText = "position:fixed;right:14px;bottom:104px;width:50px;height:50px;"
     + "border-radius:50%;display:grid;place-items:center;font-size:20px;color:#fff;"
     + "background:linear-gradient(140deg,#ff2f6e,#7a1bd4);z-index:2147483000;"
@@ -102,7 +102,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.10.2';
+  var VERSION = '1.10.3';
   var BUILD_DATE = '2026-10-10';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -1077,8 +1077,19 @@ function TOYLINK_BOOT() {
     }
   }
 
+  // 省电：装置关着时物理层只会把 env 归零，没必要 60 帧地画。
+  // rAF 只在装置运行时跑；停下后由下面那个心跳以 ~4Hz 兜底，启动时再把 rAF 拉起来。
+  var lastIdle = 0;
   function loop(ts) {
-    raf = requestAnimationFrame(loop);
+    raf = S.on ? requestAnimationFrame(loop) : 0;
+    step();
+  }
+  function wakeLoop() { if (!raf) raf = requestAnimationFrame(loop); }
+  function heartbeat() {
+    if (S.on) { if (!raf) wakeLoop(); step(); return; }
+    var now = performance.now();
+    if (now - lastIdle < 250) return;
+    lastIdle = now;
     step();
   }
 
@@ -1784,6 +1795,7 @@ function TOYLINK_BOOT() {
   function startSilent() {
     if (S.on) return false;
     S.on = true;
+    wakeLoop();
     S.beg = 0;        // 新的一轮，请求次数清零
     paintTargetLock();   // 装置跑起来了，作用对象先锁住
     S.t = 0;
@@ -2468,8 +2480,8 @@ function TOYLINK_BOOT() {
     ONWIN('pagehide', function () { HAP.kill(); });
 
     render();
-    raf = requestAnimationFrame(loop);
-    setInterval(step, 50);   // rAF 被挂起时的兜底心跳
+    wakeLoop();
+    setInterval(heartbeat, 50);   // rAF 被挂起时的兜底心跳；装置关着时自动降到 ~4Hz
 
     var verEl = $('#ver-hint');
     if (verEl) verEl.textContent = 'TOY·LINK v' + VERSION + '（' + BUILD_DATE + '）';
