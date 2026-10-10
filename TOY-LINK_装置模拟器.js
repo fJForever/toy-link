@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.10.4 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.10.5 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -10,9 +10,23 @@
 function TOYLINK_BOOT() {
   "use strict";
 
+  /* 已经跑着一个实例。
+   * 版本相同：是重复点脚本按钮，切换面板即可。
+   * 版本不同：说明先执行的是旧版 —— 这正是换新脚本后最常见的困惑，
+   *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
+   *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    window.__TOYLINK__.toggle();
-    return;
+    if (window.__TOYLINK__.version === "1.10.5") {
+      window.__TOYLINK__.toggle();
+      return;
+    }
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.10.5"); } catch (e) {}
+    try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
+    try {
+      var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
+      var oldBall = document.getElementById("__toylink_ball__"); if (oldBall) oldBall.remove();
+      window.__TOYLINK__ = null;
+    } catch (e) { /* noop */ }
   }
 
   /* ==================== 定位酒馆页面 ====================
@@ -87,7 +101,7 @@ function TOYLINK_BOOT() {
   var ball = DOC.createElement("div");
   ball.id = "__toylink_ball__";
   ball.textContent = "◈";
-  ball.title = "TOY·LINK 控制器 v1.10.4";
+  ball.title = "TOY·LINK 控制器 v1.10.5";
   ball.style.cssText = "position:fixed;right:14px;bottom:104px;width:50px;height:50px;"
     + "border-radius:50%;display:grid;place-items:center;font-size:20px;color:#fff;"
     + "background:linear-gradient(140deg,#ff2f6e,#7a1bd4);z-index:2147483000;"
@@ -102,7 +116,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.10.4';
+  var VERSION = '1.10.5';
   var BUILD_DATE = '2026-10-10';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2657,6 +2671,7 @@ function TOYLINK_BOOT() {
   }, 900);
 
   window.__TOYLINK__ = {
+    version: "1.10.5",
     host: host, root: root, ball: ball, page: PAGE,
     open: open, collapse: collapse, toggle: toggle,
     stop: function () {
