@@ -117,10 +117,10 @@
 
 ```text
 index.html  ──(node 工具-构建脚本版.js)──▶  dist/TOY-LINK-<版本>.js
-  源码                                        产物（加载器拉的就是它）
+  源码                                        产物（用户脚本自更新时拉的就是它）
 ```
 
-**改完源码必须重跑构建再提交**。构建会同时更新 dist/ 里的本体、latest.js 和 ersion.txt 的指针 —— 三者不一致的话加载器会拉到错的东西。
+**改完源码必须重跑构建再提交**。构建会同时写出三样东西：`dist/TOY-LINK-<版本>.js`、`version.txt` 的指针，以及 `TOY-LINK脚本.json` 里的本体。**三者版本号必须一致** —— 不一致的话用户的自更新会拉到错的东西，或者干脆拉不到。
 
 ```powershell
 git clone https://github.com/fJForever/toy-link.git
