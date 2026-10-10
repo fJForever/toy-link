@@ -1,0 +1,6 @@
+# 换行符统一成 LF。少了这一行，用 Mac/Linux 的人 clone 之后
+# 一改文件就会看到整文件 diff —— 那种 diff 没法 review。
+* text=auto eol=lf
+
+# 插件本体是构建产物，不是手写的，GitHub 不用把它算进语言统计
+TOY-LINK_装置模拟器.js linguist-generated=true
