@@ -66,6 +66,8 @@ const RULES = [
   ['document.addEventListener(', 'ONDOC('],
   // 挂载临时节点
   ['document.body.appendChild(ta);', 'MOUNT(ta);'],
+  // 装置状态交给外层悬浮球读（主脚本自己包在闭包里，外面看不见 S）
+  ['  var S = {', '  var S = TK_S = {'],   // index.html 里只有这一处
   // 振动与音频走酒馆页面，绕开 iframe 的权限策略
   ["('vibrate' in navigator)", "('vibrate' in NAV)"],
   ['navigator.vibrate(', 'NAV.vibrate('],
@@ -83,7 +85,8 @@ const MUST = [
   ['ONWIN(\'resize\'', 'resize 绑定替换'],
   ['ONDOC(\'visibilitychange\'', 'visibilitychange 替换'],
   ["'vibrate' in NAV", '振动能力检测替换'],
-  ['NAV.vibrate(0)', '振动停止调用替换']
+  ['NAV.vibrate(0)', '振动停止调用替换'],
+  ['var S = TK_S = {', '装置状态交给悬浮球']
 ];
 MUST.forEach(function (m) {
   if (js.indexOf(m[0]) === -1) throw new Error('改写失败（' + m[1] + '）：找不到 "' + m[0] + '"');
@@ -135,6 +138,282 @@ const BALL_ID = '__toylink_ball__';
 const HOST_ID = '__toylink_host__';
 const BTN_NAME = 'TOY·LINK 控制器';
 
+/* ---------- 悬浮球：紫色小 lelo ----------
+ * 下面两个函数只在构建时被 toString() 抄进产物，node 里不执行。
+ * 运行时引用的 DOC / WIN / S / MOUNT 都是 TOYLINK_BOOT 里的变量。
+ *
+ * 外形照 LELO TIANI：C 形、梅紫哑光硅胶、香槟金环、奶白底盘，不画任何高光反光（Fan 10-11 定的样子）。
+ *
+ * 运行中的动态效果故意不做「抖」——抖久了看着烦，也和真机马达的手感对不上。改成三样：
+ *   1. 大豆荚的颜色跟着实时包络 S.env「温起来」（梅紫→梅红），金环上的小灯一起亮：脉冲一闪一闪，潮汐慢慢涨落，心跳两下一组
+ *   2. 包络每到一个波峰，从豆荚头部放一圈声波；最快 ~4 圈/秒，高频模式也不会闪成一片
+ *   3. 球外面一圈晕光表示当前强度（粉紫=你拿遥控器，红=TA 拿着），临界爆发时连放三圈
+ * 包络先过一道低通（起 60ms、落 160ms）再画，暴雨/乱流这种高频模式看起来是在「涌」而不是在闪。
+ * 系统开了「减少动态效果」：只留光晕和指示灯，不放声波、不缩放。
+ */
+
+// 弹簧缓动：照抄苹果 SwiftUI 的 Spring(duration: 0.5, bounce: 0.3)，采样成 CSS linear()
+function springCurve(duration, bounce) {
+  var w = 2 * Math.PI / duration, z = 1 - bounce, wd = w * Math.sqrt(Math.max(0, 1 - z * z));
+  function x(t) {
+    if (z >= 1) return 1 - Math.exp(-w * t) * (1 + w * t);
+    return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t));
+  }
+  var T = 0;
+  for (var t = 0; t <= 3; t += 0.004) if (Math.abs(1 - x(t)) > 0.002) T = t;
+  var pts = [];
+  for (var i = 0; i <= 40; i++) pts.push(i === 40 ? 1 : Math.round(x(T * i / 40) * 10000) / 10000);
+  return { ms: Math.round(T * 1000), lin: 'linear(' + pts.join(', ') + ')' };
+}
+
+function TOY_BALL_SVG(u) {
+  // TIANI 那种 C 形：上面一只大豆荚、香槟金环、下面一条细臂弯回来。哑光，不画高光
+  var POD = 'M0 -5 C6 -6.4 12 -8.6 19.5 -8.5 C27.5 -8.4 32 -4.6 32 0 C32 4.6 27.5 8.4 19.5 8.5 C12 8.6 6 6.4 0 5 Z';
+  var ARM = 'M19.4 33 C13.6 35.6 9.6 41.6 12.6 47.4 C15.8 53.6 28 53.4 36.4 47.2 C40.4 44.2 43.2 40.8 44.6 37.6';
+  return '' +
+  '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">' +
+  '<defs>' +
+    '<radialGradient id="' + u + 'Disc" cx="40%" cy="30%" r="78%"><stop offset="0" stop-color="#fbf6f0"/><stop offset=".7" stop-color="#f1e7dc"/><stop offset="1" stop-color="#e4d6c8"/></radialGradient>' +
+    '<linearGradient id="' + u + 'Plum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8e2f8f"/><stop offset=".55" stop-color="#76207a"/><stop offset="1" stop-color="#561462"/></linearGradient>' +
+    '<linearGradient id="' + u + 'PlumArm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7f2682"/><stop offset=".6" stop-color="#6a1b70"/><stop offset="1" stop-color="#4f1159"/></linearGradient>' +
+    '<linearGradient id="' + u + 'Warm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c25bbf"/><stop offset="1" stop-color="#9a3a9c"/></linearGradient>' +
+    '<linearGradient id="' + u + 'Gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6d3b8"/><stop offset=".5" stop-color="#cdb391"/><stop offset="1" stop-color="#a98d6b"/></linearGradient>' +
+    '<clipPath id="' + u + 'DiscClip"><circle cx="32" cy="32" r="29.4"/></clipPath>' +
+    '<filter id="' + u + 'Sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.8" flood-color="#3a0d40" flood-opacity=".28"/></filter>' +
+  '</defs>' +
+  '<circle cx="32" cy="32" r="30" fill="url(#' + u + 'Disc)"/>' +
+  '<circle cx="32" cy="32" r="29.5" fill="none" stroke="#6b1f6f" stroke-opacity=".14" stroke-width="1"/>' +
+  // 声波层：圆心在大豆荚的头（缩放后落在 50.66, 20.72）
+  '<g class="tk-waves" clip-path="url(#' + u + 'DiscClip)"></g>' +
+  '<g transform="translate(32 32.5) scale(.86) translate(-32 -31.5)">' +
+  '<g class="tk-toy" filter="url(#' + u + 'Sh)">' +
+    '<path d="' + ARM + '" fill="none" stroke="url(#' + u + 'PlumArm)" stroke-width="8.8" stroke-linecap="round"/>' +
+    '<g transform="translate(24 31) rotate(-24)">' +
+      '<path d="' + POD + '" fill="url(#' + u + 'Plum)"/>' +
+      // 运行时豆荚「温起来」：叠一层亮一点的梅红，透明度跟强度走（不是反光，是颜色变暖）
+      '<path class="tk-glow" d="' + POD + '" fill="url(#' + u + 'Warm)" opacity="0"/>' +
+      // 香槟金环：哑光拉丝，只有一道很淡的分界
+      '<path d="M-5.6 -4.9 Q-6.5 0 -5.6 4.9 L0.7 5.3 Q1.7 0 0.7 -5.3 Z" fill="url(#' + u + 'Gold)"/>' +
+      '<path d="M0.7 -5.3 Q1.7 0 0.7 5.3" fill="none" stroke="#8a6f50" stroke-opacity=".35" stroke-width=".5"/>' +
+      '<circle class="tk-led" cx="-2.4" cy="0" r=".85" fill="#6e2470" opacity=".25"/>' +
+    '</g>' +
+  '</g>' +
+  '</g>' +
+  '</svg>';
+}
+
+function TOY_BALL_RUNTIME() {
+  var TK_SIZE = 58, TK_EDGE = 8, TK_POS_KEY = 'toylink_ball_pos';
+  var TK_HEAD_X = 50.66, TK_HEAD_Y = 20.72;   // 头部在底盘坐标系里的位置（SVG 里那串变换算出来的）
+  var TK = { pos: null, raf: 0, timer: 0, v: 0, prevEnv: 0, rising: false, lastWave: -1e9, waves: [], peak: -1, burst: 0, lastTs: 0, rgb: '', drag: null };
+  TK.rm = false;
+  try { TK.rm = !!(WIN.matchMedia && WIN.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { /* noop */ }
+  var tkLin = false;
+  try { tkLin = !!(WIN.CSS && WIN.CSS.supports('transition-timing-function', 'linear(0, 1)')); } catch (e) { /* noop */ }
+  TK.ease = tkLin ? TK_SPRING_LIN : 'cubic-bezier(.34,1.5,.64,1)';
+  TK.ms = tkLin ? TK_SPRING_MS : 500;
+  var tkSPR = TK.ms + 'ms ' + TK.ease;
+
+  var tkStyle = DOC.createElement('style');
+  tkStyle.id = BALL_ID + '_css';
+  var tkB = '#' + BALL_ID;
+  tkStyle.textContent = [
+    tkB + '{position:fixed;left:-200px;top:-200px;width:' + TK_SIZE + 'px;height:' + TK_SIZE + 'px;z-index:2147483000;display:none;cursor:pointer;',
+    '  user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent;border-radius:50%;',
+    '  filter:drop-shadow(0 6px 14px rgba(20,4,28,.5));transition:transform ' + tkSPR + ',filter .3s;--lv:0;--tk-rgb:196,110,214}',
+    tkB + ' svg{display:block;width:100%;height:100%;overflow:visible;position:relative}',
+    // 球外一圈晕光，亮度 = 当前强度
+    tkB + '::before{content:"";position:absolute;inset:-13px;border-radius:50%;pointer-events:none;',
+    '  background:radial-gradient(circle,rgba(var(--tk-rgb),.8) 0%,rgba(var(--tk-rgb),.34) 46%,rgba(var(--tk-rgb),0) 70%);',
+    '  opacity:var(--lv);transform:scale(calc(.78 + var(--lv) * .32))}',
+    tkB + ' .tk-toy{transform-box:fill-box;transform-origin:50% 80%}',
+    '@media (hover:hover){' + tkB + ':hover{transform:scale(1.06)}}',
+    // 按下一缩、拖起一浮（iOS 拎图标那样），松手弹回；放手后弹簧吸到最近的左右边
+    tkB + '.tk-press{transform:scale(.88);transition:transform .12s ease-out}',
+    tkB + '.tk-lift{transform:scale(1.12);filter:drop-shadow(0 16px 26px rgba(18,4,36,.65));cursor:grabbing}',
+    tkB + '.tk-snap{transition:left ' + tkSPR + ',top ' + tkSPR + ',transform ' + tkSPR + ',filter .3s}',
+    '@media (prefers-reduced-motion:reduce){' + tkB + ',' + tkB + '.tk-snap{transition:none}}'
+  ].join('\n');
+  try { (DOC.head || DOC.body).appendChild(tkStyle); } catch (e) { /* noop */ }
+
+  var ball = DOC.createElement('div');
+  ball.id = BALL_ID;
+  ball.setAttribute('role', 'button');
+  ball.setAttribute('aria-label', 'TOY·LINK 控制器');
+  ball.title = 'TOY·LINK 控制器 v' + TK_VERSION + '（可拖动）';
+  ball.innerHTML = TOY_BALL_SVG('tkb');
+  MOUNT(ball);
+  var tkGlow = ball.querySelector('.tk-glow'), tkLed = ball.querySelector('.tk-led'), tkToy = ball.querySelector('.tk-toy'), tkWaveG = ball.querySelector('.tk-waves');
+  var tkRings = [];
+  for (var tkI = 0; tkI < 6; tkI++) {
+    var tkC = DOC.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    tkC.setAttribute('cx', TK_HEAD_X); tkC.setAttribute('cy', TK_HEAD_Y); tkC.setAttribute('fill', 'none'); tkC.setAttribute('opacity', '0');
+    tkWaveG.appendChild(tkC); tkRings.push(tkC);
+  }
+
+  /* ---------- 位置：记左右哪边 + 高度，换屏宽也贴着同一边 ---------- */
+  try {
+    var tkSp = (localStorage.getItem(TK_POS_KEY) || '').split(',');
+    if ((tkSp[0] === 'l' || tkSp[0] === 'r') && isFinite(parseFloat(tkSp[1]))) TK.pos = { side: tkSp[0], y: parseFloat(tkSp[1]) };
+  } catch (e) { /* noop */ }
+  function tkVp() {
+    return { w: WIN.innerWidth || DOC.documentElement.clientWidth || 360, h: WIN.innerHeight || DOC.documentElement.clientHeight || 640 };
+  }
+  function tkClampY(y, vp) { return Math.min(Math.max(TK_EDGE, y), Math.max(TK_EDGE, vp.h - TK_SIZE - TK_EDGE)); }
+  function tkPlace() {
+    if (TK.drag) return;
+    var vp = tkVp();
+    var side = TK.pos ? TK.pos.side : 'r';
+    var y = TK.pos ? TK.pos.y : vp.h - TK_SIZE - 104;
+    ball.style.left = (side === 'l' ? TK_EDGE : vp.w - TK_SIZE - TK_EDGE) + 'px';
+    ball.style.top = tkClampY(y, vp) + 'px';   // 只夹显示位置，不改存档：键盘弹起再收回，球会回到原处
+  }
+
+  /* ---------- 拖动 / 点按 ---------- */
+  var tkSnapTimer = 0;
+  function tkBind(onTap) {
+    ball.addEventListener('pointerdown', function (e) {
+      if (e.button > 0) return;
+      var r = ball.getBoundingClientRect();
+      TK.drag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false };
+      clearTimeout(tkSnapTimer);
+      ball.classList.remove('tk-snap');
+      ball.classList.add('tk-press');
+      try { ball.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+      e.preventDefault();
+    });
+    ball.addEventListener('pointermove', function (e) {
+      var d = TK.drag; if (!d) return;
+      var dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+      if (!d.moved && dx * dx + dy * dy > 36) { d.moved = true; ball.classList.remove('tk-press'); ball.classList.add('tk-lift'); }
+      if (!d.moved) return;
+      var vp = tkVp();
+      ball.style.left = Math.min(Math.max(2, d.ox + dx), vp.w - TK_SIZE - 2) + 'px';
+      ball.style.top = Math.min(Math.max(2, d.oy + dy), vp.h - TK_SIZE - 2) + 'px';
+    });
+    function end(e, cancelled) {
+      var d = TK.drag; if (!d) return;
+      TK.drag = null;
+      ball.classList.remove('tk-press', 'tk-lift');
+      try { ball.releasePointerCapture(e.pointerId); } catch (err) { /* noop */ }
+      if (!d.moved) { if (!cancelled) onTap(); return; }
+      // 吸边：像 iPhone 的小白点，弹簧落到离得近的那一边
+      var r = ball.getBoundingClientRect(), vp = tkVp();
+      TK.pos = { side: (r.left + TK_SIZE / 2 < vp.w / 2) ? 'l' : 'r', y: tkClampY(r.top, vp) };
+      try { localStorage.setItem(TK_POS_KEY, TK.pos.side + ',' + Math.round(TK.pos.y)); } catch (err) { /* noop */ }
+      ball.classList.add('tk-snap');
+      void ball.offsetWidth;
+      tkPlace();
+      tkSnapTimer = setTimeout(function () { ball.classList.remove('tk-snap'); }, TK.ms + 60);
+    }
+    ball.addEventListener('pointerup', function (e) { end(e, false); });
+    ball.addEventListener('pointercancel', function (e) { end(e, true); });
+    ball.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); });   // 点按交给 pointerup
+    ONWIN('resize', tkPlace);
+  }
+
+  /* ---------- 显示 / 收起 ---------- */
+  function tkVisible(show) {
+    ball.style.display = show ? 'grid' : 'none';
+    if (!show) { tkStop(); return; }
+    tkPlace();
+    if (!TK.rm && ball.animate) {
+      try { ball.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: TK.ms, easing: TK.ease }); } catch (e) { /* noop */ }
+    }
+    tkKick();
+  }
+
+  /* ---------- 运行中的动态 ---------- */
+  function tkBusy() { return !!(TK_S && TK_S.on) || TK.v > 0.004 || TK.waves.length > 0 || TK.burst > 0.01; }
+  function tkKick() {
+    if (TK.raf || ball.style.display === 'none') return;
+    if (!tkBusy()) return;
+    TK.lastTs = 0;
+    TK.raf = WIN.requestAnimationFrame(tkFrame);   // 走酒馆页面的 rAF：脚本 iframe 是隐藏的，它的 rAF 可能被浏览器停掉
+  }
+  function tkWave(strength, at) {
+    TK.waves.push({ t: at, s: strength });
+    if (TK.waves.length > tkRings.length) TK.waves.shift();
+    TK.lastWave = Math.max(TK.lastWave, at);
+  }
+  function tkFrame(ts) {
+    TK.raf = 0;
+    if (!TK_S) { tkRest(); return; }
+    var dt = TK.lastTs ? Math.min(0.1, (ts - TK.lastTs) / 1000) : 0.016;
+    TK.lastTs = ts;
+    var env = TK_S.on ? Math.min(1, Math.max(0, +TK_S.env || 0)) : 0;
+    TK.v += (env - TK.v) * (1 - Math.exp(-dt / (env > TK.v ? 0.06 : 0.16)));
+
+    if (TK_S.on && !TK.rm) {
+      // 波峰：刚才在涨、现在开始落 → 放一圈；平台期（临界那种顶着不动）每 0.75 秒补一圈
+      if (env > TK.prevEnv + 0.002) TK.rising = true;
+      else if (env < TK.prevEnv - 0.002 && TK.rising) {
+        TK.rising = false;
+        if (TK.prevEnv > 0.15 && ts - TK.lastWave > 260) tkWave(TK.prevEnv, ts);
+      }
+      if (env > 0.5 && ts - TK.lastWave > 750) tkWave(env, ts);
+    }
+    TK.prevEnv = env;
+    // 临界爆发：TK_S.peak 涨了 → 连放三圈 + 晕光冲一下
+    if (TK.peak < 0 || TK_S.peak < TK.peak) TK.peak = TK_S.peak;
+    else if (TK_S.peak > TK.peak) {
+      TK.peak = TK_S.peak; TK.burst = 1;
+      if (!TK.rm) { tkWave(1, ts); tkWave(1, ts + 150); tkWave(1, ts + 300); }
+    }
+    TK.burst *= Math.exp(-dt / 0.5);
+
+    var userT = (TK_S.target === 'user');
+    var rgb = userT ? '200,40,80' : '122,32,128';   // 声波：画在奶白盘上，要深
+    var halo = userT ? '255,96,128' : '196,110,214';   // 晕光：在深色酒馆上，要亮
+    if (halo !== TK.rgb) { TK.rgb = halo; ball.style.setProperty('--tk-rgb', halo); }
+    var lv = Math.min(1.2, TK.v * 0.85 + TK.burst * 0.6);
+    ball.style.setProperty('--lv', lv.toFixed(3));
+    tkGlow.setAttribute('opacity', Math.min(.85, TK.v * 0.8 + TK.burst * 0.4).toFixed(3));
+    tkLed.setAttribute('opacity', (0.25 + Math.min(1, TK.v + TK.burst) * 0.75).toFixed(3));
+    tkLed.setAttribute('fill', (TK.v + TK.burst) > 0.05 ? '#fff4e6' : '#6e2470');
+    if (!TK.rm) tkToy.style.transform = 'scale(' + (1 + TK.v * 0.03).toFixed(4) + ')';
+
+    var keep = [];
+    for (var i = 0; i < tkRings.length; i++) {
+      var w = TK.waves[i], ring = tkRings[i];
+      if (!w) { ring.setAttribute('opacity', '0'); continue; }
+      var age = (ts - w.t) / 1100;
+      if (age >= 1) { ring.setAttribute('opacity', '0'); continue; }
+      keep.push(w);
+      if (age < 0) { ring.setAttribute('opacity', '0'); continue; }
+      ring.setAttribute('r', (4 + age * 32).toFixed(2));
+      ring.setAttribute('stroke', 'rgb(' + rgb + ')');
+      ring.setAttribute('stroke-width', (1.8 - age * 1.1).toFixed(2));
+      ring.setAttribute('opacity', (w.s * 0.6 * Math.pow(1 - age, 1.6)).toFixed(3));
+    }
+    TK.waves = keep;
+
+    if (tkBusy()) TK.raf = WIN.requestAnimationFrame(tkFrame);
+    else tkRest();
+  }
+  function tkRest() {
+    TK.v = 0; TK.burst = 0; TK.waves = []; TK.rising = false;
+    ball.style.setProperty('--lv', '0');
+    tkGlow.setAttribute('opacity', '0');
+    tkLed.setAttribute('opacity', '.25'); tkLed.setAttribute('fill', '#6e2470');
+    tkToy.style.transform = '';
+    for (var i = 0; i < tkRings.length; i++) tkRings[i].setAttribute('opacity', '0');
+  }
+  function tkStop() {
+    if (TK.raf) { try { WIN.cancelAnimationFrame(TK.raf); } catch (e) { /* noop */ } TK.raf = 0; }
+  }
+  TK.timer = setInterval(tkKick, 400);   // 装置在面板里被启动后，球这边 0.4 秒内跟上
+  function tkDispose() {
+    tkStop();
+    clearInterval(TK.timer);
+    clearTimeout(tkSnapTimer);
+    try { tkStyle.remove(); } catch (e) { /* noop */ }
+  }
+}
+
+const TK_SPRING = springCurve(0.5, 0.3);   // SwiftUI .bouncy
+function fnBody(f) { const t = f.toString(); return t.slice(t.indexOf('{') + 1, t.lastIndexOf('}')); }
+
 const body = [
   'function TOYLINK_BOOT() {',
   '  "use strict";',
@@ -154,6 +433,7 @@ const body = [
   '    try {',
   '      var oldHost = document.getElementById("' + HOST_ID + '"); if (oldHost) oldHost.remove();',
   '      var oldBall = document.getElementById("' + BALL_ID + '"); if (oldBall) oldBall.remove();',
+  '      var oldCss = document.getElementById("' + BALL_ID + '_css"); if (oldCss) oldCss.remove();',
   '      window.__TOYLINK__ = null;',
   '    } catch (e) { /* noop */ }',
   '  }',
@@ -226,17 +506,12 @@ const body = [
   '    shellEl.style.pointerEvents = "auto";',
   '  }',
   '',
-  '  /* ==================== 悬浮球 ==================== */',
-  '  var ball = DOC.createElement("div");',
-  '  ball.id = "' + BALL_ID + '";',
-  '  ball.textContent = "◈";',
-  '  ball.title = "TOY·LINK 控制器 v' + VERSION + '";',
-  '  ball.style.cssText = "position:fixed;right:14px;bottom:104px;width:50px;height:50px;"',
-  '    + "border-radius:50%;display:grid;place-items:center;font-size:20px;color:#fff;"',
-  '    + "background:linear-gradient(140deg,#ff2f6e,#7a1bd4);z-index:2147483000;"',
-  '    + "box-shadow:0 8px 26px rgba(255,47,110,.5);cursor:pointer;user-select:none;"',
-  '    + "-webkit-tap-highlight-color:transparent;transition:opacity .2s,transform .12s;";',
-  '  MOUNT(ball);',
+  '  /* ==================== 悬浮球：紫色小 lelo（源码见构建脚本里的 TOY_BALL_RUNTIME） ==================== */',
+  '  var BALL_ID = "' + BALL_ID + '", TK_VERSION = "' + VERSION + '";',
+  '  var TK_S = null;   // 主脚本跑起来后指向它的装置状态 S',
+  '  var TK_SPRING_LIN = ' + JSON.stringify(TK_SPRING.lin) + ', TK_SPRING_MS = ' + TK_SPRING.ms + ';',
+  '  ' + TOY_BALL_SVG.toString(),
+  fnBody(TOY_BALL_RUNTIME),
   '',
   '  var ROOT = root;',
   '',
@@ -355,16 +630,14 @@ const body = [
   '  try { if (WIN.__toylink_opened === false) opened = false; } catch (e) { /* noop */ }',
   '  function apply() {',
   '    host.style.display = opened ? "block" : "none";',
-  '    ball.style.display = opened ? "none" : "grid";   // 面板展开时收起悬浮球，别挡视线',
+  '    tkVisible(!opened);   // 面板展开时收起悬浮球，别挡视线；收起时弹出来',
   '    try { WIN.__toylink_opened = opened; } catch (e) { /* noop */ }',
   '  }',
   '  function open() { opened = true; apply(); setTimeout(layout, 0); }',
   '  function collapse() { opened = false; apply(); }',
   '  function toggle() { opened = !opened; apply(); if (opened) setTimeout(layout, 0); }',
   '',
-  '  ball.addEventListener("click", function (e) { e.stopPropagation(); toggle(); });',
-  '  ball.addEventListener("touchstart", function () { ball.style.transform = "scale(.9)"; }, { passive: true });',
-  '  ball.addEventListener("touchend", function () { ball.style.transform = ""; }, { passive: true });',
+  '  tkBind(toggle);   // 点按开合，拖动吸边',
   '',
   '  var closeBtn = ROOT.querySelector("#btn-close");',
   '  if (closeBtn) {',
@@ -372,22 +645,7 @@ const body = [
   '    closeBtn.addEventListener("click", collapse);',
   '  }',
   '',
-  '  // 装置运行时让悬浮球呼吸，收起后也能看出还在跑',
-  '  var liveAnim = null;',
-  '  function setLive(on) {',
-  '    if (on && !liveAnim && ball.animate) {',
-  '      liveAnim = ball.animate([',
-  '        { boxShadow: "0 8px 26px rgba(255,47,110,.45)" },',
-  '        { boxShadow: "0 0 0 12px rgba(255,47,110,0), 0 10px 34px rgba(255,47,110,.95)" }',
-  '      ], { duration: 1300, iterations: Infinity, direction: "alternate" });',
-  '    } else if (!on && liveAnim) {',
-  '      liveAnim.cancel(); liveAnim = null; ball.style.boxShadow = "0 8px 26px rgba(255,47,110,.5)";',
-  '    }',
-  '  }',
-  '  setInterval(function () {',
-  '    var p = ROOT.querySelector("#power");',
-  '    setLive(!!p && p.textContent.indexOf("停") >= 0);',
-  '  }, 900);',
+  '  // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板',
   '',
   '  window.__TOYLINK__ = {',
   '    version: "' + VERSION + '",',
@@ -395,6 +653,7 @@ const body = [
   '    open: open, collapse: collapse, toggle: toggle,',
   '    stop: function () {',
   '      try { if (NAV.vibrate) NAV.vibrate(0); } catch (e) { /* noop */ }',
+  '      try { tkDispose(); } catch (e) { /* noop */ }',
   '      var h = BYID("' + HOST_ID + '"); if (h) h.remove();',
   '      var b = BYID("' + BALL_ID + '"); if (b) b.remove();',
   '      window.__TOYLINK__ = null;',
