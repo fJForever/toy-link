@@ -234,12 +234,10 @@ function TOY_BALL_RUNTIME() {
   tkStyle.textContent = [
     tkB + '{position:fixed;left:-200px;top:-200px;width:var(--tk-size,58px);height:var(--tk-size,58px);z-index:2147483000;display:none;cursor:pointer;',
     '  user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent;border-radius:50%;',
-    '  filter:drop-shadow(0 6px 14px rgba(20,4,28,.5));transition:transform ' + tkSPR + ',filter .3s,opacity .35s;--lv:0;--tk-rgb:196,110,214;opacity:var(--tk-idle,1)}',
-    // 闲置时按偏好淡一点，免得挡字；装置在跑（.tk-live）、按住、拖起、悬停都回到实心
-    tkB + '.tk-live,' + tkB + '.tk-press,' + tkB + '.tk-lift{opacity:1}',
+    '  filter:drop-shadow(0 6px 14px rgba(20,4,28,.5));transition:transform ' + tkSPR + ',filter .3s;--lv:0;--tk-rgb:196,110,214}',
+    // 透明度只作用在底盘上；装置本体（lelo）永远实心（Fan 10-11）
     tkB + ' .tk-disc{opacity:var(--tk-disc,1);transition:opacity .3s}',
     tkB + '.tk-nodisc{filter:drop-shadow(0 4px 8px rgba(20,4,28,.45))}',
-    '@media (hover:hover){' + tkB + ':hover{opacity:1}}',
     tkB + ' svg{display:block;width:100%;height:100%;overflow:visible;position:relative}',
     // 球外一圈晕光，亮度 = 当前强度
     tkB + '::before{content:"";position:absolute;inset:-13px;border-radius:50%;pointer-events:none;',
@@ -252,8 +250,9 @@ function TOY_BALL_RUNTIME() {
     tkB + '.tk-lift{transform:scale(1.12);filter:drop-shadow(0 16px 26px rgba(18,4,36,.65));cursor:grabbing}',
     tkB + '.tk-snap{transition:left ' + tkSPR + ',top ' + tkSPR + ',transform ' + tkSPR + ',filter .3s}',
     // 贴边半藏（手机）：靠边几秒没人碰 → 半个身子藏进边里 + 半透明；点它 / 装置运行会出来
-    tkB + '.tk-tuck-r{transform:translateX(52%);opacity:.5;transition:transform .45s ease,opacity .4s}',
-    tkB + '.tk-tuck-l{transform:translateX(-52%);opacity:.5;transition:transform .45s ease,opacity .4s}',
+    tkB + '.tk-tuck-r{transform:translateX(52%);transition:transform .45s ease}',
+    tkB + '.tk-tuck-l{transform:translateX(-52%);transition:transform .45s ease}',
+    tkB + '.tk-tuck-r .tk-disc,' + tkB + '.tk-tuck-l .tk-disc{opacity:calc(var(--tk-disc,1) * .5)}',   // 贴边时只再压底盘，本体不变
     '@media (prefers-reduced-motion:reduce){' + tkB + ',' + tkB + '.tk-snap{transition:none}}'
   ].join('\n');
   try { (DOC.head || DOC.body).appendChild(tkStyle); } catch (e) { /* noop */ }
@@ -261,7 +260,6 @@ function TOY_BALL_RUNTIME() {
   var ball = DOC.createElement('div');
   ball.id = BALL_ID;
   ball.style.setProperty('--tk-size', TK_SIZE + 'px');
-  ball.style.setProperty('--tk-idle', '0.82');   // 待机整体微暗，运行 / 按住 / 悬停回实心
   function tkApplyDisc() {
     ball.style.setProperty('--tk-disc', String(tkPref.fade));
     ball.classList.toggle('tk-nodisc', tkPref.fade === 0);
