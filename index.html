@@ -728,6 +728,34 @@ textarea{
       </div>
     </section>
 
+    <section class="panel" id="s-ball-sec" hidden>
+      <h3>悬浮球</h3>
+      <div class="field">
+        <div class="lb"><b>大小</b><small>只存在这台设备上，换聊天不变。</small></div>
+        <div class="chips" id="s-ball-size" style="margin-top:0">
+          <button class="chip" data-s="44">小</button>
+          <button class="chip on" data-s="58">中</button>
+          <button class="chip" data-s="72">大</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>底盘透明度</b><small>只调装置后面那块奶白圆盘，中间的装置本体不变。盘透了就不挡字。待机时整球还会微暗一点，运行 / 按住 / 悬停回实心。</small></div>
+        <div class="chips" id="s-ball-fade" style="margin-top:0">
+          <button class="chip" data-f="1">实心</button>
+          <button class="chip on" data-f="0.45">半透</button>
+          <button class="chip" data-f="0">透明</button>
+        </div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>隐藏悬浮球</b><small id="s-ball-hide-note">只用脚本按钮「TOY·LINK 控制器」开面板。按钮在酒馆的快速回复栏里（需开着 QR 栏）；装了 QR 整合插件的，在它的火箭菜单里。</small></div>
+        <div class="sw" id="s-ball-hide"><i></i></div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>贴边半藏（手机）</b><small>球靠着屏幕边几秒没人碰，就半藏进边里变半透明，不挡字。点它、或装置跑起来会出来。电脑上不贴。</small></div>
+        <div class="sw on" id="s-ball-tuck"><i></i></div>
+      </div>
+    </section>
+
     <section class="panel">
       <h3>状态快照（角色能看到的内容）</h3>
       <textarea id="state-box" readonly></textarea>
@@ -781,7 +809,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.11.0';
+  var VERSION = '1.11.1';
   var BUILD_DATE = '2026-10-11';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -3266,6 +3294,45 @@ textarea{
       ? '已切换：直写（体内感觉与顶点照写）'
       : '已切换：忍耐 · 假装镇定（只写撑不住的样子）', 2600);
   });
+  /* 悬浮球偏好：只有脚本版才有球（TK_API 由构建脚本里的球运行时提供），网页单开时整节隐藏 */
+  (function () {
+    var sec = $('#s-ball-sec'); if (!sec) return;
+    var api = (typeof TK_API !== 'undefined' && TK_API) ? TK_API : null;
+    if (!api) return;
+    sec.hidden = false;
+    var sizeBox = $('#s-ball-size'), fadeBox = $('#s-ball-fade'), hideSw = $('#s-ball-hide'), tuckSw = $('#s-ball-tuck'), hideNote = $('#s-ball-hide-note');
+    function paint() {
+      var p = api.get();
+      var cs = sizeBox.children;
+      for (var i = 0; i < cs.length; i++) cs[i].classList.toggle('on', +cs[i].getAttribute('data-s') === p.size);
+      var fs = fadeBox.children;
+      for (var j = 0; j < fs.length; j++) fs[j].classList.toggle('on', +fs[j].getAttribute('data-f') === p.fade);
+      hideSw.classList.toggle('on', p.hidden);
+      tuckSw.classList.toggle('on', p.tuck);
+      if (!p.btnOk) {
+        hideSw.style.opacity = '.4'; hideSw.style.pointerEvents = 'none';
+        hideNote.innerHTML = '<b>这个环境里没注册上脚本按钮</b>，球是唯一的入口，不能藏。';
+      }
+    }
+    sizeBox.addEventListener('click', function (e) {
+      var b = e.target.closest('.chip'); if (!b) return;
+      api.set('size', +b.getAttribute('data-s')); paint(); HAP.tap([30]);
+    });
+    fadeBox.addEventListener('click', function (e) {
+      var b = e.target.closest('.chip'); if (!b) return;
+      api.set('fade', +b.getAttribute('data-f')); paint(); HAP.tap([30]);
+    });
+    hideSw.addEventListener('click', function () {
+      var p = api.get(); api.set('hidden', !p.hidden); paint();
+      toast(!p.hidden
+        ? '已隐藏悬浮球。收起面板后，点快速回复栏里的「TOY·LINK 控制器」再打开'
+        : '悬浮球回来了', 3200);
+    });
+    tuckSw.addEventListener('click', function () {
+      var p = api.get(); api.set('tuck', !p.tuck); paint();
+    });
+    paint();
+  })();
   $('#s-beg').addEventListener('click', function () {
     S.begDocile = !S.begDocile;
     bindSettings();

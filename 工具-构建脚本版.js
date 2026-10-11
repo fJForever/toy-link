@@ -182,8 +182,8 @@ function TOY_BALL_SVG(u) {
     '<clipPath id="' + u + 'DiscClip"><circle cx="32" cy="32" r="29.4"/></clipPath>' +
     '<filter id="' + u + 'Sh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.6" stdDeviation="1.8" flood-color="#3a0d40" flood-opacity=".28"/></filter>' +
   '</defs>' +
-  '<circle cx="32" cy="32" r="30" fill="url(#' + u + 'Disc)"/>' +
-  '<circle cx="32" cy="32" r="29.5" fill="none" stroke="#6b1f6f" stroke-opacity=".14" stroke-width="1"/>' +
+  '<g class="tk-disc"><circle cx="32" cy="32" r="30" fill="url(#' + u + 'Disc)"/>' +
+  '<circle cx="32" cy="32" r="29.5" fill="none" stroke="#6b1f6f" stroke-opacity=".14" stroke-width="1"/></g>' +
   // 声波层：圆心在大豆荚的头（缩放后落在 50.66, 20.72）
   '<g class="tk-waves" clip-path="url(#' + u + 'DiscClip)"></g>' +
   '<g transform="translate(32 32.5) scale(.86) translate(-32 -31.5)">' +
@@ -204,7 +204,20 @@ function TOY_BALL_SVG(u) {
 }
 
 function TOY_BALL_RUNTIME() {
-  var TK_SIZE = 58, TK_EDGE = 8, TK_POS_KEY = 'toylink_ball_pos';
+  var TK_EDGE = 8, TK_POS_KEY = 'toylink_ball_pos', TK_PREF_KEY = 'toylink_ball_pref';
+  /* 球的偏好（1.11.1）：大小 / 隐藏只用脚本按钮 / 贴边半藏。
+   * 存 localStorage 而不是聊天变量：这是「这台设备怎么看」，换聊天不该变。 */
+  var tkPref = { size: 58, hidden: false, tuck: true, fade: 0.45 };   // fade：奶白底盘的透明度（1 实心 / .45 半透 / 0 透明），中间的装置本体永远原色
+  try {
+    var tkPj = JSON.parse(localStorage.getItem(TK_PREF_KEY) || '{}');
+    if (tkPj.size === 44 || tkPj.size === 58 || tkPj.size === 72) tkPref.size = tkPj.size;
+    if (typeof tkPj.hidden === 'boolean') tkPref.hidden = tkPj.hidden;
+    if (typeof tkPj.tuck === 'boolean') tkPref.tuck = tkPj.tuck;
+    if (tkPj.fade === 1 || tkPj.fade === 0.45 || tkPj.fade === 0) tkPref.fade = tkPj.fade;
+  } catch (e) { /* noop */ }
+  var TK_SIZE = tkPref.size;
+  function tkSavePref() { try { localStorage.setItem(TK_PREF_KEY, JSON.stringify(tkPref)); } catch (e) { /* noop */ } }
+  function tkNarrow() { var w = WIN.innerWidth || DOC.documentElement.clientWidth || 360; return w > 0 && w < 500; }
   var TK_HEAD_X = 50.66, TK_HEAD_Y = 20.72;   // 头部在底盘坐标系里的位置（SVG 里那串变换算出来的）
   var TK = { pos: null, raf: 0, timer: 0, v: 0, prevEnv: 0, rising: false, lastWave: -1e9, waves: [], peak: -1, burst: 0, lastTs: 0, rgb: '', drag: null };
   TK.rm = false;
@@ -219,9 +232,14 @@ function TOY_BALL_RUNTIME() {
   tkStyle.id = BALL_ID + '_css';
   var tkB = '#' + BALL_ID;
   tkStyle.textContent = [
-    tkB + '{position:fixed;left:-200px;top:-200px;width:' + TK_SIZE + 'px;height:' + TK_SIZE + 'px;z-index:2147483000;display:none;cursor:pointer;',
+    tkB + '{position:fixed;left:-200px;top:-200px;width:var(--tk-size,58px);height:var(--tk-size,58px);z-index:2147483000;display:none;cursor:pointer;',
     '  user-select:none;-webkit-user-select:none;touch-action:none;-webkit-tap-highlight-color:transparent;border-radius:50%;',
-    '  filter:drop-shadow(0 6px 14px rgba(20,4,28,.5));transition:transform ' + tkSPR + ',filter .3s;--lv:0;--tk-rgb:196,110,214}',
+    '  filter:drop-shadow(0 6px 14px rgba(20,4,28,.5));transition:transform ' + tkSPR + ',filter .3s,opacity .35s;--lv:0;--tk-rgb:196,110,214;opacity:var(--tk-idle,1)}',
+    // 闲置时按偏好淡一点，免得挡字；装置在跑（.tk-live）、按住、拖起、悬停都回到实心
+    tkB + '.tk-live,' + tkB + '.tk-press,' + tkB + '.tk-lift{opacity:1}',
+    tkB + ' .tk-disc{opacity:var(--tk-disc,1);transition:opacity .3s}',
+    tkB + '.tk-nodisc{filter:drop-shadow(0 4px 8px rgba(20,4,28,.45))}',
+    '@media (hover:hover){' + tkB + ':hover{opacity:1}}',
     tkB + ' svg{display:block;width:100%;height:100%;overflow:visible;position:relative}',
     // 球外一圈晕光，亮度 = 当前强度
     tkB + '::before{content:"";position:absolute;inset:-13px;border-radius:50%;pointer-events:none;',
@@ -233,12 +251,22 @@ function TOY_BALL_RUNTIME() {
     tkB + '.tk-press{transform:scale(.88);transition:transform .12s ease-out}',
     tkB + '.tk-lift{transform:scale(1.12);filter:drop-shadow(0 16px 26px rgba(18,4,36,.65));cursor:grabbing}',
     tkB + '.tk-snap{transition:left ' + tkSPR + ',top ' + tkSPR + ',transform ' + tkSPR + ',filter .3s}',
+    // 贴边半藏（手机）：靠边几秒没人碰 → 半个身子藏进边里 + 半透明；点它 / 装置运行会出来
+    tkB + '.tk-tuck-r{transform:translateX(52%);opacity:.5;transition:transform .45s ease,opacity .4s}',
+    tkB + '.tk-tuck-l{transform:translateX(-52%);opacity:.5;transition:transform .45s ease,opacity .4s}',
     '@media (prefers-reduced-motion:reduce){' + tkB + ',' + tkB + '.tk-snap{transition:none}}'
   ].join('\n');
   try { (DOC.head || DOC.body).appendChild(tkStyle); } catch (e) { /* noop */ }
 
   var ball = DOC.createElement('div');
   ball.id = BALL_ID;
+  ball.style.setProperty('--tk-size', TK_SIZE + 'px');
+  ball.style.setProperty('--tk-idle', '0.82');   // 待机整体微暗，运行 / 按住 / 悬停回实心
+  function tkApplyDisc() {
+    ball.style.setProperty('--tk-disc', String(tkPref.fade));
+    ball.classList.toggle('tk-nodisc', tkPref.fade === 0);
+  }
+  tkApplyDisc();
   ball.setAttribute('role', 'button');
   ball.setAttribute('aria-label', 'TOY·LINK 控制器');
   ball.title = 'TOY·LINK 控制器 v' + TK_VERSION + '（可拖动）';
@@ -278,6 +306,7 @@ function TOY_BALL_RUNTIME() {
       var r = ball.getBoundingClientRect();
       TK.drag = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, moved: false };
       clearTimeout(tkSnapTimer);
+      tkUntuck();
       ball.classList.remove('tk-snap');
       ball.classList.add('tk-press');
       try { ball.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
@@ -306,6 +335,7 @@ function TOY_BALL_RUNTIME() {
       void ball.offsetWidth;
       tkPlace();
       tkSnapTimer = setTimeout(function () { ball.classList.remove('tk-snap'); }, TK.ms + 60);
+      tkTuckSoon(3000);
     }
     ball.addEventListener('pointerup', function (e) { end(e, false); });
     ball.addEventListener('pointercancel', function (e) { end(e, true); });
@@ -314,10 +344,33 @@ function TOY_BALL_RUNTIME() {
   }
 
   /* ---------- 显示 / 收起 ---------- */
+  /* ---------- 贴边半藏 ---------- */
+  var tkTuckTimer = 0;
+  function tkTuckNow() {
+    if (!tkPref.tuck || !tkNarrow() || TK.drag || ball.style.display === 'none') return;
+    if (TK_S && TK_S.on) return;   // 装置在跑，球要让人看见
+    var side = TK.pos ? TK.pos.side : 'r';
+    ball.classList.remove('tk-tuck-l', 'tk-tuck-r');
+    ball.classList.add('tk-tuck-' + side);
+  }
+  function tkUntuck() {
+    if (tkTuckTimer) { clearTimeout(tkTuckTimer); tkTuckTimer = 0; }
+    ball.classList.remove('tk-tuck-l', 'tk-tuck-r');
+  }
+  function tkTuckSoon(ms) {
+    if (tkTuckTimer) clearTimeout(tkTuckTimer);
+    if (!tkPref.tuck) return;
+    tkTuckTimer = setTimeout(function () { tkTuckTimer = 0; tkTuckNow(); }, ms || 3000);
+  }
+
+  /* ---------- 显示 / 收起 ---------- */
   function tkVisible(show) {
+    if (show && tkPref.hidden && TK_API.btnOk) show = false;   // 玩家选了「只用脚本按钮」
     ball.style.display = show ? 'grid' : 'none';
-    if (!show) { tkStop(); return; }
+    if (!show) { tkStop(); tkUntuck(); return; }
+    tkUntuck();
     tkPlace();
+    tkTuckSoon(3000);
     if (!TK.rm && ball.animate) {
       try { ball.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: TK.ms, easing: TK.ease }); } catch (e) { /* noop */ }
     }
@@ -329,6 +382,8 @@ function TOY_BALL_RUNTIME() {
   function tkKick() {
     if (TK.raf || ball.style.display === 'none') return;
     if (!tkBusy()) return;
+    tkUntuck();
+    ball.classList.add('tk-live');
     TK.lastTs = 0;
     TK.raf = WIN.requestAnimationFrame(tkFrame);   // 走酒馆页面的 rAF：脚本 iframe 是隐藏的，它的 rAF 可能被浏览器停掉
   }
@@ -365,6 +420,7 @@ function TOY_BALL_RUNTIME() {
 
     var userT = (TK_S.target === 'user');
     var rgb = userT ? '200,40,80' : '122,32,128';   // 声波：画在奶白盘上，要深
+    if (tkPref.fade < 1) rgb = userT ? '255,120,150' : '220,150,235';   // 底盘透了，底下是深色酒馆，声波要亮
     var halo = userT ? '255,96,128' : '196,110,214';   // 晕光：在深色酒馆上，要亮
     if (halo !== TK.rgb) { TK.rgb = halo; ball.style.setProperty('--tk-rgb', halo); }
     var lv = Math.min(1.2, TK.v * 0.85 + TK.burst * 0.6);
@@ -393,6 +449,8 @@ function TOY_BALL_RUNTIME() {
     else tkRest();
   }
   function tkRest() {
+    ball.classList.remove('tk-live');
+    tkTuckSoon(3000);
     TK.v = 0; TK.burst = 0; TK.waves = []; TK.rising = false;
     ball.style.setProperty('--lv', '0');
     tkGlow.setAttribute('opacity', '0');
@@ -404,10 +462,29 @@ function TOY_BALL_RUNTIME() {
     if (TK.raf) { try { WIN.cancelAnimationFrame(TK.raf); } catch (e) { /* noop */ } TK.raf = 0; }
   }
   TK.timer = setInterval(tkKick, 400);   // 装置在面板里被启动后，球这边 0.4 秒内跟上
+  /* 面板设置页通过它读写球的偏好（index.html 里 typeof TK_API 判断有没有球） */
+  var TK_API = {
+    btnOk: false,   // 脚本按钮注册成功后由 BOOT 置 true；没按钮就不许隐藏球
+    get: function () { return { size: tkPref.size, hidden: tkPref.hidden, tuck: tkPref.tuck, fade: tkPref.fade, btnOk: TK_API.btnOk }; },
+    set: function (k, v) {
+      if (k === 'size' && (v === 44 || v === 58 || v === 72)) {
+        tkPref.size = TK_SIZE = v; ball.style.setProperty('--tk-size', v + 'px'); tkPlace();
+      } else if (k === 'hidden') {
+        tkPref.hidden = !!v;
+        // 面板开着时球本来就收着；关面板时 tkVisible 会按新偏好决定出不出来
+      } else if (k === 'fade' && (v === 1 || v === 0.45 || v === 0)) {
+        tkPref.fade = v; tkApplyDisc();
+      } else if (k === 'tuck') {
+        tkPref.tuck = !!v; if (v) tkTuckSoon(600); else tkUntuck();
+      } else return;
+      tkSavePref();
+    }
+  };
   function tkDispose() {
     tkStop();
     clearInterval(TK.timer);
     clearTimeout(tkSnapTimer);
+    clearTimeout(tkTuckTimer);
     try { tkStyle.remove(); } catch (e) { /* noop */ }
   }
 }
@@ -544,8 +621,13 @@ const body = [
   '    return (isFinite(x) && isFinite(y)) ? { left: x, top: y } : null;',
   '  })();',
   '',
+  '  var layingOut = false;   // layout 末尾会广播 resize，而 layout 自己也挂在 resize 上：不设闸就无限递归（控制台成串的 Maximum call stack）',
   '  function layout() {',
-  '    if (!shellEl) return;',
+  '    if (!shellEl || layingOut) return;',
+  '    layingOut = true;',
+  '    try { layoutInner(); } finally { layingOut = false; }',
+  '  }',
+  '  function layoutInner() {',
   '    var vp = viewport();',
   '    // 窄屏第一次打开默认全屏，之后听用户的',
   '    if (lsGet(FIT_KEY) === null && vp.w < 860) shellEl.classList.add("fit");',
@@ -683,7 +765,7 @@ const body = [
   '',
   '  try {',
   '    var rsb = pickApi("replaceScriptButtons");',
-  '    if (rsb) rsb([{ name: "' + BTN_NAME + '", visible: true }]);',
+  '    if (rsb) { rsb([{ name: "' + BTN_NAME + '", visible: true }]); TK_API.btnOk = true; }',
   '',
   '    var eon = pickApi("eventOn");',
   '    var gbe = pickApi("getButtonEvent");',
@@ -697,6 +779,7 @@ const body = [
   '  } catch (e) {',
   '    console.log("[TOY·LINK] 脚本按钮注册失败：", e);',
   '  }',
+  '  if (!TK_API.btnOk) tkPref.hidden = false;   // 没按钮的环境里，球是唯一的门，不许藏',
   '',
   '  /* ---------- 卸载清理 ---------- */',
   '  var bye = function () {',
