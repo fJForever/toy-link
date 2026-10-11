@@ -10,34 +10,38 @@
    TOY·LINK 手机端遥控器
    单文件前端卡，零构建。运行环境：酒馆助手（Tavern Helper）iframe
 
-   两套主题靠变量切换：
-     · 遥控器在你手里（默认）→ 冷蓝，像一台仪表
-     · 遥控器在 TA 手里     → 品红，主导权不在你手上
+   两套主题靠变量切换（和悬浮球一套：梅紫硅胶 · 奶白底盘 · 香槟金环，哑光不反光）：
+     · 遥控器在你手里（默认）→ 梅紫 + 香槟金，底色梅黑
+     · 遥控器在 TA 手里     → 酒红 / 石榴红 + 香槟金，主导权不在你手上
+   --cyan 沿用旧名，现在是香槟金（第二强调色：累积环、选中芯片、余像线）。
    除背景渐变外不写第二套规则，全部靠变量自动跟随。
    ============================================================ */
 :root{
-  --bg:#140810;
-  --bg-glow-1:rgba(255,127,176,.20);
-  --bg-glow-2:rgba(168,216,255,.13);
-  --card:rgba(255,255,255,.05);
-  --card-2:rgba(255,255,255,.08);
-  --line:rgba(255,255,255,.11);
-  --line-2:rgba(255,255,255,.19);
-  --hot:#ff7fb0;
-  --hot-2:#ffb3d1;
-  --hot-deep:#d14a80;
-  --hot-a12:rgba(255,127,176,.12);
-  --hot-a20:rgba(255,127,176,.20);
-  --hot-a28:rgba(255,127,176,.28);
-  --hot-a35:rgba(255,127,176,.35);
-  --hot-a45:rgba(255,127,176,.45);
-  --hot-a55:rgba(255,127,176,.55);
-  --hot-a75:rgba(255,127,176,.75);
-  --cyan:#a8d8ff;
-  --amber:#ffb347;
-  --text:#fdf0f6;
-  --dim:#c49aae;
-  --dim-2:#8a6c7c;
+  --bg:#120a13;
+  --bg-glow-1:rgba(150,62,156,.22);
+  --bg-glow-2:rgba(214,189,150,.06);
+  --card:rgba(238,222,242,.045);
+  --card-2:rgba(238,222,242,.07);
+  --line:rgba(232,214,236,.10);
+  --line-2:rgba(232,214,236,.18);
+  --hot:#c06cc2;
+  --hot-2:#e2b6df;
+  --hot-deep:#76207a;
+  --hot-a12:rgba(192,108,194,.12);
+  --hot-a20:rgba(192,108,194,.20);
+  --hot-a28:rgba(192,108,194,.28);
+  --hot-a35:rgba(192,108,194,.35);
+  --hot-a45:rgba(192,108,194,.45);
+  --hot-a55:rgba(192,108,194,.55);
+  --hot-a75:rgba(192,108,194,.75);
+  --cyan:#d6bd96;
+  --cyan-a08:rgba(214,189,150,.08);
+  --cyan-a40:rgba(214,189,150,.40);
+  --cyan-a75:rgba(214,189,150,.75);
+  --amber:#eba866;
+  --text:#f4ece3;
+  --dim:#b9a5ad;
+  --dim-2:#958290;
   --r:16px;
   --safe-t:env(safe-area-inset-top,0px);
   --safe-b:env(safe-area-inset-bottom,0px);
@@ -65,26 +69,26 @@ button{border:0;background:none;cursor:pointer}
   font-family:var(--font);
   color:var(--text);
   /* 底色用常量，不依赖 CSS 变量；渐变叠在上面，即使变量失效也不会透出底下的内容 */
-  background-color:#140810;
+  background-color:#120a13;
   background-image:
     radial-gradient(120% 70% at 12% -8%, var(--bg-glow-1), transparent 62%),
     radial-gradient(110% 60% at 92% 6%, var(--bg-glow-2), transparent 58%),
-    linear-gradient(180deg,#1c0b16 0%, #140810 55%, #0b0409 100%);
+    linear-gradient(180deg,#1b0e1d 0%, #120a13 55%, #09050a 100%);
 }
 #shell::after{
   content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
-  background-image:linear-gradient(rgba(255,255,255,.022) 1px,transparent 1px),
-                   linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px);
+  background-image:linear-gradient(rgba(232,214,236,.018) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(232,214,236,.018) 1px,transparent 1px);
   background-size:26px 26px;
   mask-image:radial-gradient(120% 80% at 50% 0%,#000 30%,transparent 100%);
 }
 @media (min-width:860px){
-  body{display:grid;place-items:center;background:#040307}
+  body{display:grid;place-items:center;background:#060307}
   #shell{
     width:404px;height:min(800px,92vh);max-height:92vh;min-height:0;
     border-radius:34px;
-    border:1px solid rgba(255,255,255,.09);
-    box-shadow:0 40px 120px rgba(0,0,0,.75),0 0 0 10px rgba(255,255,255,.02);
+    border:1px solid rgba(232,214,236,.09);
+    box-shadow:0 40px 120px rgba(0,0,0,.75),0 0 0 10px rgba(232,214,236,.02);
   }
 }
 /* 全屏模式：窄屏默认就是全屏；宽屏可以手动切换 */
@@ -101,15 +105,18 @@ button{border:0;background:none;cursor:pointer}
 }
 .brand{display:flex;align-items:center;gap:8px;min-width:0}
 .logo{
-  width:26px;height:26px;border-radius:9px;flex:none;
-  background:linear-gradient(140deg,var(--hot),var(--hot-deep));
-  box-shadow:0 0 18px var(--hot-a55);
-  display:grid;place-items:center;font-size:13px;
+  /* 悬浮球的缩小版：奶白底盘 + 梅紫 C 形小装置 + 香槟金环，哑光 */
+  width:26px;height:26px;border-radius:50%;flex:none;
+  background:radial-gradient(120% 120% at 35% 25%,#fbf6f0 0%,#f1e7dc 62%,#e2d3c4 100%);
+  box-shadow:0 2px 6px rgba(0,0,0,.35);
+  display:grid;place-items:center;overflow:hidden;
 }
+.logo svg{width:26px;height:26px;display:block}
 .brand b{
   font-size:12px;letter-spacing:.22em;font-weight:700;text-transform:uppercase;
-  white-space:nowrap;
+  white-space:nowrap;color:var(--text);
 }
+.brand b i{font-style:normal;color:var(--cyan)}
 .brand .ver{
   font-size:9.5px;letter-spacing:.06em;color:var(--dim-2);
   white-space:nowrap;margin-left:-2px;
@@ -123,8 +130,8 @@ button{border:0;background:none;cursor:pointer}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--dim-2);flex:none}
 /* 已连接：固定绿灯闪烁，不跟主题走 —— 它是状态指示，不是装饰。
    跟着主题变会让「连上了」这件事在两档下颜色不同，反而不好认。 */
-.dot.live{background:#3ddc84;box-shadow:0 0 10px #3ddc84;animation:pulse 1.6s ease-in-out infinite}
-.dot.demo{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.dot.live{background:#5fd08e;box-shadow:0 0 6px rgba(95,208,142,.55);animation:pulse 1.6s ease-in-out infinite}
+.dot.demo{background:var(--amber);box-shadow:0 0 5px var(--amber)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
 
 /* 顶栏小按钮 */
@@ -138,19 +145,19 @@ button{border:0;background:none;cursor:pointer}
 
 /* ---------- 作用对象切换（常驻，面板最上方） ----------
    这一档换的不是参数，是整台机器谁说了算：
-   你操控 = 遥控台（品红、可点）；TA 操控 = 只读仪表（冷紫、锁住档位）。 */
+   你操控 = 遥控台（梅紫、可点）；TA 操控 = 只读仪表（酒红、锁住档位）。 */
 .tgtbar{
   position:relative;z-index:6;flex:none;
   display:grid;grid-template-columns:1fr 1fr;gap:4px;
   margin:0 16px 12px;padding:4px;border-radius:15px;
-  border:1px solid var(--line);background:rgba(255,255,255,.04);
+  border:1px solid var(--line);background:rgba(238,222,242,.035);
 }
 .tgt-ind{
   position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 6px);
   border-radius:11px;pointer-events:none;
-  background:linear-gradient(135deg,var(--hot-a35),var(--hot-a12));
+  background:linear-gradient(180deg,var(--hot-a28),var(--hot-a12));
   border:1px solid var(--hot-a45);
-  box-shadow:0 0 20px var(--hot-a28);
+  box-shadow:0 2px 10px rgba(0,0,0,.25);
   transition:transform .3s cubic-bezier(.4,0,.2,1),background .3s,border-color .3s,box-shadow .3s;
 }
 .tgt{
@@ -160,7 +167,7 @@ button{border:0;background:none;cursor:pointer}
 }
 .tgt b{font-size:12.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
 .tgt i{font-style:normal;font-size:9.5px;letter-spacing:.04em;opacity:.7;white-space:nowrap}
-.tgt.on{color:#fff}
+.tgt.on{color:var(--text)}
 .tgt.on i{opacity:.85}
 
 /* 装置运行中：作用对象切换锁住。
@@ -172,30 +179,33 @@ button{border:0;background:none;cursor:pointer}
 .tgtbar.locked .tgt-ind{filter:grayscale(.55)}
 .tgtbar.locked .tgt:active{transform:none}
 
-/* 切到 TA 拿着遥控器：主导权不在你手上，整机从少女粉换成红。
-   这里只换变量和背景，其余规则全部靠 var() 自动跟随。 */
+/* 切到 TA 拿着遥控器：主导权不在你手上，整机从梅紫换成酒红 / 石榴红（悬浮球晕光同步变红）。
+   香槟金不变，还是同一个牌子；这里只换变量和背景，其余规则全部靠 var() 自动跟随。 */
 #shell.tgt-user{
-  --hot:#ff2f45;
-  --hot-2:#ff7080;
-  --hot-deep:#a80f20;
-  --hot-a12:rgba(255,47,69,.12);
-  --hot-a20:rgba(255,47,69,.20);
-  --hot-a28:rgba(255,47,69,.28);
-  --hot-a35:rgba(255,47,69,.35);
-  --hot-a45:rgba(255,47,69,.45);
-  --hot-a55:rgba(255,47,69,.55);
-  --hot-a75:rgba(255,47,69,.75);
-  --cyan:#ffb347;
-  --bg-glow-1:rgba(255,47,69,.24);
-  --bg-glow-2:rgba(255,179,71,.10);
-  --text:#fff0f0;
-  --dim:#b59095;
-  --dim-2:#7a5f63;
-  background-color:#170406;
+  --hot:#e0566f;
+  --hot-2:#f2b0ba;
+  --hot-deep:#8a1a33;
+  --hot-a12:rgba(224,86,111,.12);
+  --hot-a20:rgba(224,86,111,.20);
+  --hot-a28:rgba(224,86,111,.28);
+  --hot-a35:rgba(224,86,111,.35);
+  --hot-a45:rgba(224,86,111,.45);
+  --hot-a55:rgba(224,86,111,.55);
+  --hot-a75:rgba(224,86,111,.75);
+  --bg-glow-1:rgba(176,34,68,.26);
+  --bg-glow-2:rgba(214,189,150,.06);
+  --card:rgba(250,226,230,.045);
+  --card-2:rgba(250,226,230,.07);
+  --line:rgba(244,214,220,.10);
+  --line-2:rgba(244,214,220,.18);
+  --text:#f6ebe5;
+  --dim:#bfa2a5;
+  --dim-2:#9a7f83;
+  background-color:#13070a;
   background-image:
     radial-gradient(120% 70% at 12% -8%, var(--bg-glow-1), transparent 62%),
     radial-gradient(110% 60% at 92% 6%, var(--bg-glow-2), transparent 58%),
-    linear-gradient(180deg,#210508 0%, #170406 55%, #0c0203 100%);
+    linear-gradient(180deg,#1e0a10 0%, #13070a 55%, #0a0305 100%);
 }
 #shell.tgt-user .tgt-ind{transform:translateX(calc(100% + 4px))}
 /* 圆环渐变：两个停靠点跟着主色走 */
@@ -224,17 +234,17 @@ button{border:0;background:none;cursor:pointer}
 .beg{
   display:flex;flex-direction:column;align-items:center;gap:3px;
   width:100%;padding:12px 14px;border-radius:14px;
-  border:1px solid rgba(255,179,71,.5);
-  background:linear-gradient(180deg,rgba(255,179,71,.18),rgba(255,179,71,.07));
+  border:1px solid rgba(235,168,102,.48);
+  background:linear-gradient(180deg,rgba(235,168,102,.16),rgba(235,168,102,.06));
   animation:begbreath 3.2s ease-in-out infinite;
 }
-.beg b{font-size:13.5px;font-weight:700;letter-spacing:.06em;color:#ffd9a0}
+.beg b{font-size:13.5px;font-weight:700;letter-spacing:.06em;color:#f6d3a8}
 .beg i{font-style:normal;font-size:10.5px;color:var(--dim);letter-spacing:.04em;text-align:center}
 .beg:active{transform:scale(.985)}
 .beg:disabled{animation:none;opacity:.6}
 @keyframes begbreath{
-  0%,100%{box-shadow:0 0 0 0 rgba(255,179,71,.26)}
-  50%{box-shadow:0 0 22px 2px rgba(255,179,71,.26)}
+  0%,100%{box-shadow:0 0 0 0 rgba(235,168,102,.20)}
+  50%{box-shadow:0 0 18px 1px rgba(235,168,102,.20)}
 }
 
 /* 只读态：能看不能碰。当前档位仍然高亮，因为它就是"TA 现在用的是哪一档" */
@@ -247,7 +257,7 @@ button{border:0;background:none;cursor:pointer}
   opacity:1;
   border-color:var(--hot-a75);
   background:linear-gradient(180deg,var(--hot-a20),var(--hot-a12));
-  box-shadow:0 0 22px var(--hot-a28) inset;
+  box-shadow:none;
 }
 #v-device.locked .ctl input[type=range]{opacity:.55;pointer-events:none}
 #v-device.locked .ctl input[type=range]::-webkit-slider-thumb{box-shadow:none}
@@ -278,18 +288,16 @@ button{border:0;background:none;cursor:pointer}
   .readout .big{font-size:clamp(30px,10vw,42px)}
 }
 .ring svg{width:100%;height:100%;transform:rotate(-90deg)}
-.ring .trk{fill:none;stroke:rgba(255,255,255,.07);stroke-width:7}
+.ring .trk{fill:none;stroke:rgba(232,214,236,.07);stroke-width:7}
 .ring .val{fill:none;stroke:url(#gr);stroke-width:7;stroke-linecap:round;
-  filter:drop-shadow(0 0 8px var(--hot-a55));transition:stroke-dasharray .12s linear}
-.ring .val2{fill:none;stroke:rgba(47,224,200,.75);stroke-width:3;stroke-linecap:round;
-  filter:drop-shadow(0 0 6px rgba(47,224,200,.5))}
+  transition:stroke-dasharray .12s linear}
+.ring .val2{fill:none;stroke:var(--cyan-a75);stroke-width:3;stroke-linecap:round}
 .readout{
   position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:2px;
 }
 .readout .big{
   font-size:clamp(38px,13vw,54px);font-weight:800;line-height:1;letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums;
-  text-shadow:0 0 26px var(--hot-a45);
+  font-variant-numeric:tabular-nums;color:var(--text);
 }
 .readout .big small{font-size:.38em;font-weight:600;letter-spacing:.06em;color:var(--dim);margin-left:4px}
 .readout .sub{font-size:11.5px;color:var(--dim);letter-spacing:.14em;font-variant-numeric:tabular-nums}
@@ -297,13 +305,13 @@ button{border:0;background:none;cursor:pointer}
   margin-top:6px;font-size:11px;color:var(--hot-2);letter-spacing:.2em;
   text-transform:uppercase;
 }
-.ring.off .val{stroke:rgba(255,255,255,.10)}
+.ring.off .val{stroke:rgba(232,214,236,.10)}
 .ring.off .big{color:var(--dim);text-shadow:none}
 
 /* ---------- 波形 ---------- */
 .wave-wrap{
   position:relative;margin:10px 0 2px;height:66px;border-radius:14px;
-  border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.012));
+  border:1px solid var(--line);background:linear-gradient(180deg,rgba(238,222,242,.035),rgba(238,222,242,.01));
   overflow:hidden;
 }
 .wave-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -314,13 +322,13 @@ button{border:0;background:none;cursor:pointer}
 
 /* ---------- 阶段进度 ---------- */
 .phases{display:flex;gap:6px;margin:12px 0 4px}
-.phase{flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.09);overflow:hidden}
+.phase{flex:1;height:4px;border-radius:4px;background:rgba(232,214,236,.09);overflow:hidden}
 .phase i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--hot));transition:width .3s}
 .phase.done i{width:100%}
 .freeze{
   margin:9px 0 0;padding:7px 12px;border-radius:10px;text-align:center;
   font-size:11.5px;letter-spacing:.05em;color:var(--cyan);cursor:pointer;
-  border:1px dashed rgba(47,224,200,.42);background:rgba(47,224,200,.07);
+  border:1px dashed var(--cyan-a40);background:var(--cyan-a08);
 }
 .freeze:active{transform:scale(.99)}
 .freeze[hidden]{display:none}
@@ -340,8 +348,8 @@ button{border:0;background:none;cursor:pointer}
 .panel h3 .tag{
   margin-left:8px;padding:2px 8px;border-radius:999px;
   font-size:9.5px;letter-spacing:.06em;text-transform:none;font-weight:600;
-  color:var(--amber);background:rgba(255,179,71,.12);
-  border:1px solid rgba(255,179,71,.34);
+  color:var(--amber);background:rgba(235,168,102,.10);
+  border:1px solid rgba(235,168,102,.32);
 }
 .panel h3 .tag:empty{display:none}
 
@@ -350,20 +358,20 @@ button{border:0;background:none;cursor:pointer}
 @media (max-width:360px){.modes{grid-template-columns:repeat(3,1fr)}}
 .mode{
   position:relative;padding:11px 4px 9px;border-radius:13px;
-  border:1px solid var(--line);background:rgba(255,255,255,.03);
+  border:1px solid var(--line);background:rgba(238,222,242,.025);
   display:flex;flex-direction:column;align-items:center;gap:5px;
   transition:transform .12s,border-color .18s,background .18s;
 }
 .mode:active{transform:scale(.94)}
-.mode svg{width:26px;height:26px;opacity:.75}
+.mode svg{width:26px;height:26px;opacity:.8;color:var(--cyan)}
 .mode span{font-size:10.5px;letter-spacing:.04em;color:var(--dim)}
 .mode.on{
   border-color:var(--hot-a75);
   background:linear-gradient(180deg,var(--hot-a20),var(--hot-a12));
-  box-shadow:0 0 22px var(--hot-a20) inset,0 6px 18px var(--hot-a12);
+  box-shadow:0 4px 14px rgba(0,0,0,.22);
 }
-.mode.on svg{opacity:1}
-.mode.on span{color:#fff;font-weight:600}
+.mode.on svg{opacity:1;color:var(--hot-2)}
+.mode.on span{color:var(--text);font-weight:600}
 
 /* ---------- 滑块 ---------- */
 .ctl{display:block;margin-top:14px}
@@ -380,26 +388,26 @@ input[type=range]{
 }
 input[type=range]::-webkit-slider-runnable-track{
   height:6px;border-radius:6px;
-  background:linear-gradient(90deg,var(--hot) var(--p,50%),rgba(255,255,255,.10) var(--p,50%));
+  background:linear-gradient(90deg,var(--hot) var(--p,50%),rgba(232,214,236,.10) var(--p,50%));
 }
 input[type=range]::-webkit-slider-thumb{
   -webkit-appearance:none;width:22px;height:22px;margin-top:-8px;border-radius:50%;
-  background:#fff;border:3px solid var(--hot);
-  box-shadow:0 0 14px var(--hot-a55);
+  background:#f6efe7;border:3px solid var(--hot);
+  box-shadow:0 2px 6px rgba(0,0,0,.4);
 }
-input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:rgba(255,255,255,.10)}
+input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:rgba(232,214,236,.10)}
 input[type=range]::-moz-range-progress{height:6px;border-radius:6px;background:var(--hot)}
 input[type=range]::-moz-range-thumb{
-  width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--hot);
+  width:22px;height:22px;border-radius:50%;background:#f6efe7;border:3px solid var(--hot);
 }
 
 /* ---------- 快捷芯片 ---------- */
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .chip{
   padding:7px 12px;border-radius:999px;font-size:11.5px;color:var(--dim);
-  border:1px solid var(--line);background:rgba(255,255,255,.03);
+  border:1px solid var(--line);background:rgba(238,222,242,.025);
 }
-.chip.on{border-color:var(--cyan);color:#cffaf4;background:rgba(47,224,200,.10)}
+.chip.on{border-color:var(--cyan-a75);color:#efe0c6;background:var(--cyan-a08)}
 .chip:active{transform:scale(.96)}
 
 /* ---------- 电源键 ---------- */
@@ -407,20 +415,20 @@ input[type=range]::-moz-range-thumb{
   position:relative;z-index:5;flex:none;display:flex;gap:10px;
   padding:12px 16px calc(var(--safe-b) + 12px);
   border-top:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(7,5,11,.35),rgba(7,5,11,.92));
+  background:linear-gradient(180deg,rgba(10,5,10,.35),rgba(10,5,10,.92));
   backdrop-filter:blur(12px);
 }
 .power{
   flex:1;padding:15px;border-radius:15px;font-size:14.5px;font-weight:700;letter-spacing:.1em;
-  background:linear-gradient(135deg,var(--hot),var(--hot-deep,#c2185b));
-  color:#fff;box-shadow:0 8px 26px var(--hot-a35);
+  background:linear-gradient(160deg,var(--hot) -35%,var(--hot-deep,#76207a) 90%);
+  color:#fbf6f0;box-shadow:0 6px 18px rgba(0,0,0,.35);
   transition:transform .12s,filter .2s;
 }
 .power:active{transform:scale(.975)}
-.power.stop{background:linear-gradient(135deg,#3a3346,#221d2b);color:var(--text);box-shadow:none;border:1px solid var(--line-2)}
+.power.stop{background:linear-gradient(160deg,#352a36,#1f1720);color:var(--text);box-shadow:none;border:1px solid var(--line-2)}
 .ghost{
   flex:none;width:56px;border-radius:15px;border:1px solid var(--line);
-  background:var(--card);display:grid;place-items:center;font-size:19px;color:var(--dim);
+  background:var(--card);display:grid;place-items:center;font-size:19px;color:var(--cyan);
 }
 .ghost:active{transform:scale(.95)}
 
@@ -428,7 +436,7 @@ input[type=range]::-moz-range-thumb{
 .dock{
   position:relative;z-index:5;flex:none;display:flex;
   border-top:1px solid var(--line);
-  padding-bottom:var(--safe-b);background:rgba(8,6,13,.92);
+  padding-bottom:var(--safe-b);background:rgba(10,5,10,.92);
 }
 .tab{
   flex:1;padding:10px 4px calc(10px + var(--safe-b)/2);font-size:11px;color:var(--dim-2);
@@ -437,15 +445,16 @@ input[type=range]::-moz-range-thumb{
 .tab.on{color:var(--text)}
 .tab.on::after{
   content:"";position:absolute;left:50%;top:0;transform:translateX(-50%);
-  width:26px;height:2px;border-radius:2px;background:var(--hot);box-shadow:0 0 10px var(--hot);
+  width:26px;height:2px;border-radius:2px;background:var(--cyan);
 }
 .tab b{display:block;font-size:16px;font-weight:400;margin-bottom:3px}
+.tab.on b{color:var(--cyan)}
 
 /* ---------- 对话流 ---------- */
 .say{
   position:sticky;top:0;z-index:4;display:flex;gap:8px;
   padding:7px 0 11px;
-  background:linear-gradient(180deg,rgba(7,5,11,.97) 30%,rgba(7,5,11,.72) 78%,rgba(7,5,11,0));
+  background:linear-gradient(180deg,rgba(13,7,11,.97) 30%,rgba(13,7,11,.72) 78%,rgba(13,7,11,0));
 }
 .say input{
   flex:1;min-width:0;padding:11px 14px;border-radius:12px;font-size:16px;
@@ -453,8 +462,8 @@ input[type=range]::-moz-range-thumb{
 }
 .say input:focus{border-color:var(--hot-a55)}
 .say button{
-  flex:none;padding:0 18px;border-radius:12px;font-size:13px;font-weight:700;color:#fff;
-  background:linear-gradient(135deg,var(--hot),#c2185b);
+  flex:none;padding:0 18px;border-radius:12px;font-size:13px;font-weight:700;color:#fbf6f0;
+  background:linear-gradient(160deg,var(--hot) -35%,var(--hot-deep) 90%);
 }
 .say button:active{transform:scale(.96)}
 .feed{display:flex;flex-direction:column;gap:12px;padding:4px 0 8px}
@@ -468,7 +477,7 @@ input[type=range]::-moz-range-thumb{
   display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--dim-2);
   letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px;
 }
-.msg .who i{width:16px;height:16px;border-radius:5px;background:linear-gradient(140deg,var(--hot),#7a1bd4);display:block}
+.msg .who i{width:16px;height:16px;border-radius:5px;background:linear-gradient(160deg,var(--hot),var(--hot-deep));display:block}
 .msg .bubble{
   padding:12px 14px;border-radius:14px;font-size:13.5px;line-height:1.75;
   background:var(--card-2);border:1px solid var(--line);white-space:pre-wrap;word-break:break-word;
@@ -477,7 +486,7 @@ input[type=range]::-moz-range-thumb{
 .msg.sys .bubble{
   background:transparent;border-style:dashed;color:var(--dim);font-size:11.5px;padding:8px 12px;
 }
-.msg.now .bubble{box-shadow:0 0 0 1px rgba(47,224,200,.35),0 0 24px rgba(47,224,200,.10)}
+.msg.now .bubble{box-shadow:0 0 0 1px var(--cyan-a40)}
 .blink::after{content:"▍";color:var(--cyan);animation:pulse 1s infinite}
 
 /* ---------- 设置页 ---------- */
@@ -491,13 +500,13 @@ input[type=range]::-moz-range-thumb{
 .field .lb small{display:block;font-size:11px;color:var(--dim-2);line-height:1.5}
 .sw{
   position:relative;width:46px;height:27px;border-radius:999px;flex:none;
-  background:rgba(255,255,255,.10);border:1px solid var(--line);transition:background .2s;
+  background:rgba(232,214,236,.10);border:1px solid var(--line);transition:background .2s;
 }
 .sw i{
   position:absolute;top:2.5px;left:2.5px;width:20px;height:20px;border-radius:50%;
-  background:#fff;transition:transform .2s;
+  background:#f6efe7;transition:transform .2s;
 }
-.sw.on{background:linear-gradient(135deg,var(--hot),#c2185b);border-color:transparent}
+.sw.on{background:linear-gradient(160deg,var(--hot) -20%,var(--hot-deep) 100%);border-color:transparent}
 .sw.on i{transform:translateX(19px)}
 .mini{
   flex:none;padding:8px 13px;border-radius:10px;font-size:12px;
@@ -520,7 +529,7 @@ textarea{
   display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .tst{
   padding:9px 16px;border-radius:999px;font-size:12px;
-  background:rgba(20,14,26,.95);border:1px solid var(--line-2);
+  background:rgba(24,14,25,.95);border:1px solid var(--line-2);
   box-shadow:0 8px 30px rgba(0,0,0,.6);animation:tin .25s;max-width:82vw;text-align:center;
 }
 @keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -531,8 +540,8 @@ textarea{
 
   <header class="bar">
     <div class="brand">
-      <span class="logo">◈</span>
-      <b>TOY·LINK</b>
+      <span class="logo" aria-hidden="true"><svg viewBox="4 4 56 56" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lgPlum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8e2f8f"/><stop offset=".55" stop-color="#76207a"/><stop offset="1" stop-color="#561462"/></linearGradient><linearGradient id="lgGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6d3b8"/><stop offset=".5" stop-color="#cdb391"/><stop offset="1" stop-color="#a98d6b"/></linearGradient></defs><g transform="translate(32 32.5) scale(.86) translate(-32 -31.5)"><path d="M19.4 33 C13.6 35.6 9.6 41.6 12.6 47.4 C15.8 53.6 28 53.4 36.4 47.2 C40.4 44.2 43.2 40.8 44.6 37.6" fill="none" stroke="#6a1b70" stroke-width="8.8" stroke-linecap="round"/><g transform="translate(24 31) rotate(-24)"><path d="M0 -5 C6 -6.4 12 -8.6 19.5 -8.5 C27.5 -8.4 32 -4.6 32 0 C32 4.6 27.5 8.4 19.5 8.5 C12 8.6 6 6.4 0 5 Z" fill="url(#lgPlum)"/><path d="M-5.6 -4.9 Q-6.5 0 -5.6 4.9 L0.7 5.3 Q1.7 0 0.7 -5.3 Z" fill="url(#lgGold)"/></g></g></svg></span>
+      <b>TOY<i>·</i>LINK</b>
       <span class="ver" id="brand-ver"></span>
     </div>
     <div class="conn" id="conn"><span class="dot" id="dot"></span><span id="conn-txt">待机</span></div>
@@ -564,9 +573,9 @@ textarea{
         <svg viewBox="0 0 120 120" aria-hidden="true">
           <defs>
             <linearGradient id="gr" x1="0" y1="0" x2="1" y2="1">
-              <stop class="s1" offset="0%" stop-color="#2fe0c8"/>
-              <stop class="s2" offset="55%" stop-color="#ff2f6e"/>
-              <stop class="s3" offset="100%" stop-color="#ff7aa2"/>
+              <stop class="s1" offset="0%" stop-color="#d6bd96"/>
+              <stop class="s2" offset="55%" stop-color="#c06cc2"/>
+              <stop class="s3" offset="100%" stop-color="#e2b6df"/>
             </linearGradient>
           </defs>
           <circle class="trk" cx="60" cy="60" r="52"/>
@@ -753,7 +762,7 @@ textarea{
   <!-- ============ 电源区 ============ -->
   <div class="powerbar">
     <button class="power" id="power">启 动</button>
-    <button class="ghost" id="btn-burst" title="冲击一次">⚡</button>
+    <button class="ghost" id="btn-burst" title="冲击一次"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2 4 14h7l-1 8 9-13h-7z"/></svg></button>
   </div>
 
   <nav class="dock">
@@ -770,7 +779,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.10.12';
+  var VERSION = '1.10.13';
   var BUILD_DATE = '2026-10-11';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -1477,8 +1486,8 @@ textarea{
   /* 画布和 canvas 里用不了 CSS 变量，这里跟着主题存一份 rgb，
      由 paintTarget() 在切换时同步。数值必须和 :root / #shell.tgt-user 对得上。 */
   var THEME_RGB = {
-    char: { hot: '255,127,176', hot2: '255,179,209', cyan: '168,216,255' },
-    user: { hot: '255,47,69', hot2: '255,112,128', cyan: '255,179,71' }
+    char: { hot: '192,108,194', hot2: '226,182,223', cyan: '214,189,150' },
+    user: { hot: '224,86,111', hot2: '242,176,186', cyan: '214,189,150' }
   };
   var HOT_RGB = THEME_RGB.char.hot;
   var HOT_RGB_2 = THEME_RGB.char.hot2;
@@ -1638,12 +1647,12 @@ textarea{
     pathAt(1, 0);
     wctx.lineTo(w, h); wctx.lineTo(Math.max(x0, 0), h); wctx.closePath();
     var g = wctx.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0, 'rgba(' + HOT_RGB + ',.42)');
+    g.addColorStop(0, 'rgba(' + HOT_RGB + ',.34)');
     g.addColorStop(1, 'rgba(' + HOT_RGB + ',0)');
     wctx.fillStyle = g; wctx.fill();
     // 主线
     pathAt(1, 0);
-    wctx.strokeStyle = S.on ? 'rgba(' + HOT_RGB_2 + ',.95)' : 'rgba(255,255,255,.20)';
+    wctx.strokeStyle = S.on ? 'rgba(' + HOT_RGB_2 + ',.95)' : 'rgba(232,214,236,.20)';
     wctx.lineWidth = 1.6; wctx.lineJoin = 'round'; wctx.stroke();
     // 余像
     pathAt(0.62, -3);
@@ -2853,7 +2862,7 @@ textarea{
 
   /* 作用对象：首页顶部的分段开关。
      切到「自己」后整台机器换一套身份——不是换几个参数，而是从"遥控台"变成"只读仪表"：
-     配色换成冷紫、档位控件锁住、当前档位只等 TA 的回复来更新。 */
+     配色换成酒红、档位控件锁住、当前档位只等 TA 的回复来更新。 */
   function paintTarget() {
     var user = (S.target === 'user');
     // 画布上色跟着主题走
