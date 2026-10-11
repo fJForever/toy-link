@@ -105,13 +105,11 @@ button{border:0;background:none;cursor:pointer}
 }
 .brand{display:flex;align-items:center;gap:8px;min-width:0}
 .logo{
-  /* 悬浮球的缩小版：奶白底盘 + 梅紫 C 形小装置 + 香槟金环，哑光 */
-  width:26px;height:26px;border-radius:50%;flex:none;
-  background:radial-gradient(120% 120% at 35% 25%,#fbf6f0 0%,#f1e7dc 62%,#e2d3c4 100%);
-  box-shadow:0 2px 6px rgba(0,0,0,.35);
-  display:grid;place-items:center;overflow:hidden;
+  /* 装置本体（和悬浮球同一只 C 形）：梅紫哑光硅胶 + 香槟金环，不垫底盘、不画高光 */
+  width:30px;height:30px;flex:none;display:grid;place-items:center;
+  filter:drop-shadow(0 1.5px 2px rgba(0,0,0,.5));
 }
-.logo svg{width:26px;height:26px;display:block}
+.logo svg{width:30px;height:30px;display:block;overflow:visible}
 .brand b{
   font-size:12px;letter-spacing:.22em;font-weight:700;text-transform:uppercase;
   white-space:nowrap;color:var(--text);
@@ -540,7 +538,7 @@ textarea{
 
   <header class="bar">
     <div class="brand">
-      <span class="logo" aria-hidden="true"><svg viewBox="4 4 56 56" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lgPlum" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8e2f8f"/><stop offset=".55" stop-color="#76207a"/><stop offset="1" stop-color="#561462"/></linearGradient><linearGradient id="lgGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6d3b8"/><stop offset=".5" stop-color="#cdb391"/><stop offset="1" stop-color="#a98d6b"/></linearGradient></defs><g transform="translate(32 32.5) scale(.86) translate(-32 -31.5)"><path d="M19.4 33 C13.6 35.6 9.6 41.6 12.6 47.4 C15.8 53.6 28 53.4 36.4 47.2 C40.4 44.2 43.2 40.8 44.6 37.6" fill="none" stroke="#6a1b70" stroke-width="8.8" stroke-linecap="round"/><g transform="translate(24 31) rotate(-24)"><path d="M0 -5 C6 -6.4 12 -8.6 19.5 -8.5 C27.5 -8.4 32 -4.6 32 0 C32 4.6 27.5 8.4 19.5 8.5 C12 8.6 6 6.4 0 5 Z" fill="url(#lgPlum)"/><path d="M-5.6 -4.9 Q-6.5 0 -5.6 4.9 L0.7 5.3 Q1.7 0 0.7 -5.3 Z" fill="url(#lgGold)"/></g></g></svg></span>
+      <span class="logo" aria-hidden="true"><svg viewBox="7 6 50 50" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lgPod" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#b25cb4"/><stop offset=".5" stop-color="#8c3291"/><stop offset="1" stop-color="#5e1868"/></linearGradient><linearGradient id="lgArm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9c43a1"/><stop offset=".6" stop-color="#78247e"/><stop offset="1" stop-color="#561462"/></linearGradient><linearGradient id="lgShade" x1="0" y1="0" x2="0" y2="1"><stop offset=".55" stop-color="#2a0630" stop-opacity="0"/><stop offset="1" stop-color="#2a0630" stop-opacity=".45"/></linearGradient><linearGradient id="lgGold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ead9be"/><stop offset=".5" stop-color="#cdb391"/><stop offset="1" stop-color="#9f8262"/></linearGradient></defs><path d="M19.4 33 C13.6 35.6 9.6 41.6 12.6 47.4 C15.8 53.6 28 53.4 36.4 47.2 C40.4 44.2 43.2 40.8 44.6 37.6" fill="none" stroke="url(#lgArm)" stroke-width="8.8" stroke-linecap="round"/><g transform="translate(24 31) rotate(-24)"><path d="M0 -5 C6 -6.4 12 -8.6 19.5 -8.5 C27.5 -8.4 32 -4.6 32 0 C32 4.6 27.5 8.4 19.5 8.5 C12 8.6 6 6.4 0 5 Z" fill="url(#lgPod)"/><path d="M0 -5 C6 -6.4 12 -8.6 19.5 -8.5 C27.5 -8.4 32 -4.6 32 0 C32 4.6 27.5 8.4 19.5 8.5 C12 8.6 6 6.4 0 5 Z" fill="url(#lgShade)"/><path d="M-5.6 -4.9 Q-6.5 0 -5.6 4.9 L0.7 5.3 Q1.7 0 0.7 -5.3 Z" fill="url(#lgGold)"/><path d="M0.7 -5.3 Q1.7 0 0.7 5.3" fill="none" stroke="#6b5238" stroke-opacity=".45" stroke-width=".6"/></g></svg></span>
       <b>TOY<i>·</i>LINK</b>
       <span class="ver" id="brand-ver"></span>
     </div>
