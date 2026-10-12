@@ -100,6 +100,16 @@ shell = shell.replace(
 );
 if (shell === headerBefore) throw new Error('顶栏插入失败');
 
+/* ---------- 在底栏插入「收起」页签 ----------
+ * 顶栏的 ✕ 在右上角，手机全屏时会被系统状态栏盖住（2026-10-12 玩家反馈：满屏、退不出来、只能删脚本）。
+ * 面板展开时悬浮球又是藏着的，所以必须有一个永远点得到的出口：底栏最右边。
+ * 它没有 data-go，index.html 的页签点击处理会直接放过它，收起动作在下面的运行时里绑。 */
+if (shell.split('</nav>').length !== 2) throw new Error('底栏插入失败：</nav> 不是恰好一个');
+shell = shell.replace(
+  '</nav>',
+  '  <button class="tab" id="tab-hide" type="button" aria-label="收起面板"><b>⌄</b>收起</button>\n  </nav>'
+);
+
 /* ---------- 宿主样式 ---------- */
 const EXTRA_CSS = [
   '/* ==== 注入宿主样式（脚本版专有） ====',
@@ -116,7 +126,7 @@ const EXTRA_CSS = [
   '  --hot-a35:rgba(192,108,194,.35);--hot-a45:rgba(192,108,194,.45);--hot-a55:rgba(192,108,194,.55);',
   '  --hot-a75:rgba(192,108,194,.75);',
   '  --text:#f4ece3;--dim:#b9a5ad;--dim-2:#958290;',
-  '  --r:16px;--safe-t:0px;--safe-b:0px;',
+  '  --r:16px;--safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px);',   // 全屏/PWA 下顶栏和底栏让开刘海与手势条（普通浏览器里是 0，不影响）
   '  --font:"PingFang SC","HarmonyOS Sans SC","Hiragino Sans GB","Source Han Sans SC","Microsoft YaHei",system-ui,-apple-system,sans-serif;',
   '}',
   '#btn-close{display:none}'
@@ -704,6 +714,8 @@ const body = [
   '  ONWIN("resize", layout);',
   '  ONWIN("orientationchange", function () { setTimeout(layout, 120); });',
   '  if (sizeBtn) sizeBtn.addEventListener("click", function () { setTimeout(layout, 0); });',
+  '  var fitSw = ROOT.querySelector("#s-fit");   // 设置页的「全屏」开关和 ⤢ 是同一个动作，尺寸同样要重算',
+  '  if (fitSw) fitSw.addEventListener("click", function () { setTimeout(layout, 0); });',
   '',
   '  /* ---------- 开合 ---------- */',
   '  // 同一次会话里记住上次的收起状态，避免切聊天就又弹一脸',
@@ -725,6 +737,8 @@ const body = [
   '    closeBtn.style.display = "grid";',
   '    closeBtn.addEventListener("click", collapse);',
   '  }',
+  '  var hideTab = ROOT.querySelector("#tab-hide");   // 底栏「收起」：顶栏被手机状态栏盖住时唯一点得到的出口',
+  '  if (hideTab) hideTab.addEventListener("click", function (e) { e.stopPropagation(); collapse(); });',
   '',
   '  // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板',
   '',

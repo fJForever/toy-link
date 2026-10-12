@@ -728,6 +728,14 @@ textarea{
       </div>
     </section>
 
+    <section class="panel">
+      <h3>面板</h3>
+      <div class="field">
+        <div class="lb"><b>全屏</b><small>手机上默认铺满屏幕；关掉就缩成一个小窗，顶栏可以拖着走。顶栏右上角的 ⤢ 是同一个开关——手机状态栏挡住它时就在这里切。</small></div>
+        <div class="sw" id="s-fit"><i></i></div>
+      </div>
+    </section>
+
     <section class="panel" id="s-ball-sec" hidden>
       <h3>悬浮球</h3>
       <div class="field">
@@ -809,7 +817,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.11.1';
+  var VERSION = '1.11.2';
   var BUILD_DATE = '2026-10-11';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -3373,6 +3381,7 @@ textarea{
   // 视图切换
   document.querySelector('.dock').addEventListener('click', function (e) {
     var b = e.target.closest('.tab'); if (!b) return;
+    if (!b.dataset.go) return;   // 脚本版底栏多一个「收起」页签（构建脚本插的），它不切视图，自己绑了收起
     HAP.tap(14);   // 页签：一下很轻的确认
     go(b.dataset.go);
   });
@@ -3486,23 +3495,31 @@ textarea{
     window.addEventListener('orientationchange', function () { setTimeout(fitCanvas, 120); });
 
     // 全屏 / 窗口切换：窄屏本来是全屏，宽屏默认窗口，可手动切
-    var shellEl = $('#shell'), sizeBtn = $('#btn-size'), FIT_KEY = 'toylink_fit_mode';
+    var shellEl = $('#shell'), sizeBtn = $('#btn-size'), fitSw = $('#s-fit'), FIT_KEY = 'toylink_fit_mode';
     function applyFit(on) {
       shellEl.classList.toggle('fit', on);
       if (sizeBtn) sizeBtn.textContent = on ? '⤡' : '⤢';
+      if (fitSw) fitSw.classList.toggle('on', on);
       setTimeout(fitCanvas, 60);
     }
+    // 首开规则要和脚本版 layout() 的一致：没存过偏好时，窄屏（<860）默认全屏。
+    // 以前这里默认 false，会把脚本版刚加上的 fit 摘掉——面板是满屏的、状态却是「窗口」，⤢ 要点两次才缩小。
     var fitOn = false;
-    try { fitOn = localStorage.getItem(FIT_KEY) === '1'; } catch (e) { /* noop */ }
+    try {
+      var fitSaved = localStorage.getItem(FIT_KEY);
+      fitOn = fitSaved === null ? (window.innerWidth < 860) : fitSaved === '1';
+    } catch (e) { /* noop */ }
     applyFit(fitOn);
-    if (sizeBtn) {
-      sizeBtn.addEventListener('click', function () {
-        fitOn = !shellEl.classList.contains('fit');
-        applyFit(fitOn);
-        try { localStorage.setItem(FIT_KEY, fitOn ? '1' : '0'); } catch (e) { /* noop */ }
-        toast(fitOn ? '全屏模式' : '窗口模式');
-      });
+    // 顶栏 ⤢ 和设置页的「全屏」开关是同一个动作。手机上顶栏可能被系统状态栏盖住（2026-10-12 玩家反馈：
+    // 满屏、退不出来），所以设置页里也放一个，底栏「设置」永远点得到。
+    function toggleFit() {
+      fitOn = !shellEl.classList.contains('fit');
+      applyFit(fitOn);
+      try { localStorage.setItem(FIT_KEY, fitOn ? '1' : '0'); } catch (e) { /* noop */ }
+      toast(fitOn ? '全屏模式' : '窗口模式');
     }
+    if (sizeBtn) sizeBtn.addEventListener('click', toggleFit);
+    if (fitSw) fitSw.addEventListener('click', toggleFit);
 
     var dot = $('#dot'), txt = $('#conn-txt');
     if (BRIDGE.ready) {
