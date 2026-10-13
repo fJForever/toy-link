@@ -13,6 +13,7 @@
    两套主题靠变量切换（和悬浮球一套：梅紫硅胶 · 奶白底盘 · 香槟金环，哑光不反光）：
      · 遥控器在你手里（默认）→ 梅紫 + 香槟金，底色梅黑
      · 遥控器在 TA 手里     → 酒红 / 石榴红 + 香槟金，主导权不在你手上
+     · 自己玩（装置和遥控器都在你这）→ 遥控器在你手里，同默认梅紫
    --cyan 沿用旧名，现在是香槟金（第二强调色：累积环、选中芯片、余像线）。
    除背景渐变外不写第二套规则，全部靠变量自动跟随。
    ============================================================ */
@@ -143,15 +144,17 @@ button{border:0;background:none;cursor:pointer}
 
 /* ---------- 作用对象切换（常驻，面板最上方） ----------
    这一档换的不是参数，是整台机器谁说了算：
-   你操控 = 遥控台（梅紫、可点）；TA 操控 = 只读仪表（酒红、锁住档位）。 */
+   你操控 = 遥控台（梅紫、可点）；TA 操控 = 只读仪表（酒红、锁住档位）。
+   第三档「自己玩」（1.12.0）：装置和遥控器都在你身上，遥控器在你手里，所以还是梅紫、可点。
+   三列：padding 4 + gap 4×2 = 16px，滑块宽 (100% - 16px) / 3，每挪一格 = 自身宽 + 一个 gap。 */
 .tgtbar{
   position:relative;z-index:6;flex:none;
-  display:grid;grid-template-columns:1fr 1fr;gap:4px;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:4px;
   margin:0 16px 12px;padding:4px;border-radius:15px;
   border:1px solid var(--line);background:rgba(238,222,242,.035);
 }
 .tgt-ind{
-  position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 6px);
+  position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 16px) / 3);
   border-radius:11px;pointer-events:none;
   background:linear-gradient(180deg,var(--hot-a28),var(--hot-a12));
   border:1px solid var(--hot-a45);
@@ -159,12 +162,13 @@ button{border:0;background:none;cursor:pointer}
   transition:transform .3s cubic-bezier(.4,0,.2,1),background .3s,border-color .3s,box-shadow .3s;
 }
 .tgt{
-  position:relative;z-index:1;padding:9px 6px;border-radius:11px;
-  display:flex;flex-direction:column;align-items:center;gap:2px;
+  position:relative;z-index:1;min-width:0;padding:9px 4px;border-radius:11px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
   color:var(--dim);transition:color .22s;
 }
-.tgt b{font-size:12.5px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
-.tgt i{font-style:normal;font-size:9.5px;letter-spacing:.04em;opacity:.7;white-space:nowrap}
+.tgt b{font-size:12px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+/* 三格挤在 ~340px 的面板里：副标题极窄时允许折成两行，不许溢出 */
+.tgt i{font-style:normal;font-size:9px;letter-spacing:.03em;opacity:.7;white-space:normal;text-align:center;line-height:1.3}
 .tgt.on{color:var(--text)}
 .tgt.on i{opacity:.85}
 
@@ -206,6 +210,7 @@ button{border:0;background:none;cursor:pointer}
     linear-gradient(180deg,#1e0a10 0%, #13070a 55%, #0a0305 100%);
 }
 #shell.tgt-user .tgt-ind{transform:translateX(calc(100% + 4px))}
+#shell.tgt-self .tgt-ind{transform:translateX(calc(200% + 8px))}
 /* 圆环渐变：两个停靠点跟着主色走 */
 .ring .s1{stop-color:var(--cyan)}
 .ring .s2{stop-color:var(--hot)}
@@ -515,6 +520,17 @@ input[type=range]::-moz-range-thumb{
   width:64px;padding:8px 10px;border-radius:10px;text-align:center;font-size:13px;
   border:1px solid var(--line);background:rgba(0,0,0,.35);
 }
+/* 短文本输入（「对方是谁」）：和 .num 同一套外观，宽一点 */
+.txt{
+  flex:none;width:9em;padding:8px 10px;border-radius:10px;font-size:13px;
+  border:1px solid var(--line);background:rgba(0,0,0,.35);outline:none;
+  -webkit-appearance:none;appearance:none;
+}
+.txt::placeholder{color:var(--dim-2);opacity:1}
+.txt:focus{border-color:var(--hot-a55)}
+/* 标签在上、选项一排在下的设置项（装置形态） */
+.field.col{flex-direction:column;align-items:stretch;gap:0}
+.field.col .chips{margin-top:10px}
 textarea{
   width:100%;min-height:96px;margin-top:10px;padding:11px 12px;border-radius:12px;
   border:1px solid var(--line);background:rgba(0,0,0,.35);color:var(--text);
@@ -556,6 +572,9 @@ textarea{
     </button>
     <button class="tgt" id="tgt-user" data-t="user" type="button">
       <b>TA 拿着遥控器</b><i>装置在你身上</i>
+    </button>
+    <button class="tgt" id="tgt-self" data-t="self" type="button" title="遥控器和装置都在你这">
+      <b>自己玩</b><i>装置遥控都在你</i>
     </button>
   </div>
 
@@ -671,6 +690,10 @@ textarea{
         <button class="mini" id="s-drive">酒馆聊天</button>
       </div>
       <div class="field">
+        <div class="lb"><b>对方是谁</b><small>卡里没有固定角色、或者有好几个人时填名字：装置戴在谁身上、遥控器在谁手里都认这个名字。留空＝用角色卡名。</small></div>
+        <input class="txt" id="s-holder" type="text" maxlength="24" autocomplete="off" spellcheck="false" enterkeyhint="done">
+      </div>
+      <div class="field">
         <div class="lb"><b>身体反应</b><small id="s-body-note">女性：没有不应期，一波刚落下一波能接上，顶点之后更敏感。<br>男性：顶点是一次性释放，之后有不应期，继续刺激只会变成酸胀难受。</small></div>
         <button class="mini" id="s-body">女性</button>
       </div>
@@ -714,6 +737,17 @@ textarea{
 
     <section class="panel">
       <h3>装置</h3>
+      <div class="field col">
+        <div class="lb"><b>装置形态</b><small id="s-dev-note"></small></div>
+        <div class="chips" id="s-dev">
+          <button class="chip on" data-dev="patch" type="button">贴式</button>
+          <button class="chip" data-dev="insert" type="button">内置</button>
+          <button class="chip" data-dev="suck" type="button">吸吮</button>
+          <button class="chip" data-dev="plug" type="button">后庭</button>
+          <button class="chip" data-dev="clamp" type="button">乳夹</button>
+          <button class="chip" data-dev="ring" type="button">震动环</button>
+        </div>
+      </div>
       <div class="field">
         <div class="lb"><b>强度手感倍率</b><small>影响累积速度与临界到来的快慢。</small></div>
         <input class="num" id="s-gain" type="number" min="10" max="400" value="100" step="10">
@@ -817,8 +851,8 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.11.2';
-  var BUILD_DATE = '2026-10-11';
+  var VERSION = '1.12.0';
+  var BUILD_DATE = '2026-10-13';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
      其余条目统一用 {{char}} 宏，不需要为方向重写一遍。
@@ -827,8 +861,8 @@ textarea{
     '① 既成事实（常驻）': {
       content: [
         '【既成事实】',
-        '{{user}} 身上已经戴着一枚小巧的遥控震动装置，在此之前就已经戴上了。',
-        '它贴着皮肤、几乎无声，只有 {{user}} 自己感觉得到，外人看不出来。',
+        '__DEV__',
+        '它在此之前就已经戴上了。',
         '来源不必交代：{{char}} 没问过，{{user}} 也没主动提，这件事在两人之间是默认的背景。',
         '如果剧情里被问起，按 {{char}} 的性格临场给一句解释即可，说完就过去，不要展开成回忆段落。',
         '',
@@ -839,7 +873,7 @@ textarea{
     '③ 装置设定（关键词触发）': {
       content: [
         '【装置设定】',
-        '{{char}} 手上有一只遥控器，能远程操控 {{user}} 身上那枚贴着皮肤的小装置。装置小巧无声，只有 {{user}} 自己感觉得到，外人看不出来。',
+        '{{char}} 手上有一只遥控器，能远程操控 {{user}} 身上的装置。__DEV__',
         '',
         '九种模式：脉冲（短促点动）、潮汐（绵长起伏）、心跳（两下连着的强震，后一下更重）、渐强（缓慢爬到顶再落下）、乱流（毫无规律，猜不到下一下）、撩拨（长时间空着，偶尔来一下）、暴雨（密集连击不留空隙）、临界（顶在高位再突然撤走）、冲刺（短时间直冲顶点，到顶后装置自动停下）。',
         '频率决定节奏快慢，强度决定力度大小。低频高强是拖着磨，高频低强是细密的痒。',
@@ -910,6 +944,192 @@ textarea{
     ].join('\n')
   };
 
+  /* ── 第三档「自己玩」（1.12.0）：装置戴在玩家身上，遥控器也在玩家自己手里 ──
+     起因是玩家反馈：玩世界卡、沙盒卡这类没有固定角色的卡，想自己戴只能选「TA 拿着遥控器」，
+     而 {{char}} 在这些卡上是世界名 / 旁白 / 系统，AI 就真的安排「系统」来捏遥控器。
+     所以这一档要写死三件事：没有人在操控；不许凭空安排人来拿遥控器；
+     {{char}} 是非人身份时用旁白视角写。覆盖 ①③⑨，外加 ⑩ 视角转换与 ⓪ 归属锚的 self 版。 */
+  var WB_ENTRIES_ALT_SELF = {
+    '① 既成事实（常驻）': {
+      content: [
+        '【既成事实】',
+        '__DEV__',
+        '它在此之前就已经戴上了，是 {{user}} 自己戴的。遥控器也在 {{user}} 自己手里：开不开、开多大、什么时候关，全由 {{user}} 自己按。',
+        '没有任何人在操控，也没有人知道这件事。',
+        '不要凭空安排任何人物登场来拿遥控器，也不要让谁"捡到""抢走""接管"遥控器。',
+        '{{char}} 如果是旁白、世界、系统这类没有身体的身份，就用旁白视角写，不要把它写成站在 {{user}} 身边的一个人。',
+        '场景里如果本来就有别人，他们不知道装置的存在，只能注意到 {{user}} 外在的异样。',
+        '',
+        '装置此刻是关闭的。'
+      ].join('\n')
+    },
+    '③ 装置设定（关键词触发）': {
+      content: [
+        '【装置设定】',
+        '__DEV__',
+        '遥控器在 {{user}} 自己手里，别人碰不到，也不知道它的存在。',
+        '',
+        '九种模式：脉冲（短促点动）、潮汐（绵长起伏）、心跳（两下连着的强震，后一下更重）、渐强（缓慢爬到顶再落下）、乱流（毫无规律，猜不到下一下）、撩拨（长时间空着，偶尔来一下）、暴雨（密集连击不留空隙）、临界（顶在高位再突然撤走）、冲刺（短时间直冲顶点，到顶后装置自动停下）。',
+        '频率决定节奏快慢，强度决定力度大小。低频高强是拖着磨，高频低强是细密的痒。',
+        '',
+        '开不开、开多大、什么时候关，全看 {{user}} 自己按。不要替 {{user}} 改档位，也不要替 {{user}} 关掉它。'
+      ].join('\n')
+    },
+    '⑨ 输出禁令（常驻）': {
+      content: [
+        '【输出禁令（优先级最高）】',
+        '· 不要出现这些词：系统、数据、变量、面板、界面、参数、状态同步。',
+        '· 不要复述上面的数字，用身体去表现它们。',
+        '· 这一局没有操控的人：装置和遥控器都在 {{user}} 自己身上。不要安排任何人登场来拿遥控器、调档位，或者"发现"装置。',
+        '· {{char}} 是旁白、世界、系统这类身份时，用旁白视角写；{{char}} 是具体的人、又正好在场时，也只是在场的人之一，同样不知道装置的事。',
+        '· 在场的人只能注意到 {{user}} 外在的异样：脸红、走神、话说一半、手里的事停了。他们可以问一句，不能看穿。',
+        '· 正文主体是 {{user}} 的身体感受、不自主的反应、周围环境（声音、别人的目光、手头正在做的事被打断），以及 {{user}} 在忍什么。',
+        '　这一档没有别人可写，所以允许写 {{user}} 的身体感受和心里的感受。',
+        '· 不要替 {{user}} 做主动决定：不替 {{user}} 改档位、不替 {{user}} 关掉装置、不替 {{user}} 说台词。不自主漏出来的气音、闷哼可以写。',
+        '· 节奏上每次只往前走一小步：这一回合的失控程度只比上一回合深一点，不要一口气写到底。',
+        '',
+        '__VIBE__'
+      ].join('\n')
+    }
+  };
+
+  var WB_EXTRA_SELF = {
+    name: '⑩ 视角转换（常驻）',
+    strategy: 'constant',
+    keys: [],
+    position: 'at_depth',
+    depth: 1,
+    role: 'system',
+    order: 102,
+    content: [
+      '【视角转换，优先级最高】',
+      '这一局里装置戴在 {{user}} 身上，遥控器也在 {{user}} 自己手里——与下面各条默认写的方向不同。',
+      '读到下面任何一条时，把"被作用的那一方"一律理解成 {{user}}，"操控的那一方"也是 {{user}} 自己。',
+      '下面写"{{char}} 被震、{{char}} 的身体、{{char}} 在忍"的句子，主语都换成 {{user}}；',
+      '写"{{char}} 怎么调遥控器、怎么看、怎么说""{{char}} 对 {{user}} 的反应"的句子，在这一档一律不适用——',
+      '不要为了套上这些句子去安排一个人来拿遥控器。'
+    ].join('\n')
+  };
+
+  var WB_ANCHOR_SELF = {
+    content: [
+      '【装置归属 · 最高优先级，覆盖前面所有相反的内容】',
+      '装置戴在 {{user}} 身上，遥控器也在 {{user}} 自己手里。没有任何人在操控，也没有人知道。',
+      '被刺激、出现身体反应的是 {{user}}；档位全由 {{user}} 自己按。',
+      '不要安排 {{char}} 或任何人来拿遥控器、调档位、发现装置；{{char}} 是旁白一类的身份时，用旁白视角写。',
+      '如果前面的楼层写成有人拿着遥控器，那是写错了——从这条回复开始改回来，直接改，不要在回复里解释这件事。'
+    ].join('\n')
+  };
+
+  /* ── 装置形态（1.12.0）──
+     起因是玩家问「可以自己选跳蛋类型吗」：他要的是形态 / 戴在哪，不是牌子。
+     desc 替换 ①③ 里的装置描述句（占位符 __DEV__），__WEARER__ 按作用对象换成 {{char}} 或 {{user}}；
+     feel 追加到 ⑪ 感受链末尾；keys 并进 ③ 的触发词；tip 是给状态注入用的一句话压缩版。 */
+  var DEV = {
+    patch: {
+      name: '贴式',
+      note: '贴着皮肤，几乎无声，外人看不出来。默认这一种。',
+      desc: '__WEARER__ 身上戴着一枚小巧的遥控震动装置，贴着皮肤、几乎无声，只有 __WEARER__ 自己感觉得到，外人看不出来。',
+      feel: [
+        '· 装置贴在皮肤外面，震感从贴着的那一小块往外漫：强度低时只有表面发麻，强度上去才一路酸到小腹深处、腿根。',
+        '· 它不在体内，没有"顶到"这回事；身体的反应是想躲又躲不开——并腿、挪重心，反而把它压得更实。',
+        '· 隔着衣料，坐下、并腿、外衣被人碰到的那一下，压力一变手感就跟着变。',
+        '· 外人看不出来，所以"藏"的难处全落在表情和声音上。'
+      ],
+      tip: '贴在皮肤外面，震感从那一小块往外漫，强度上去才酸到深处；不在体内，没有"顶到"。',
+      keys: ['跳蛋', '贴片']
+    },
+    insert: {
+      name: '内置',
+      note: '含在体内，走路、坐下、换姿势都在动。',
+      desc: '__WEARER__ 体内含着一枚小巧的遥控跳蛋，整个埋在里面、几乎无声，只有 __WEARER__ 自己感觉得到，外人看不出来。',
+      feel: [
+        '· 装置含在体内，震感的重心在小腹深处，不在皮肤表面；④ 里写"小腹深处泛酸""腿根发软"的地方再往里挪一层：是从里面一下下往外顶。',
+        '· 它会跟着身体动：走路、坐下、起身、弯腰、夹紧腿，每换一个姿势它就换一个位置，压到的地方也跟着变。坐下去和站起来的那一下最难藏。',
+        '· 越想夹紧不让它动，它贴得越紧、震感越实——"忍"本身会把感觉放大。',
+        '· 不要写它掉出来，也不要写外面露着什么；外人看不出来。'
+      ],
+      tip: '含在体内，重心在小腹深处；走路、坐下、换姿势它都跟着动，越夹紧越明显。',
+      keys: ['跳蛋', '内置', '体内', '塞着']
+    },
+    suck: {
+      name: '吸吮',
+      note: '不是震，是一下下地吸，像被含着吮。模式名照吸的节奏理解。',
+      desc: '__WEARER__ 身上戴着一枚小巧的遥控吸吮装置，罩在最敏感的那一点上，靠一下下的抽吸工作，几乎无声，只有 __WEARER__ 自己感觉得到，外人看不出来。',
+      feel: [
+        '· 它不震，是吸：一下下抽吸、松开、再含住。感受的重心是最敏感的那一点被拉扯、被含着吮，不是表面发麻。',
+        '· ④ 里"表面发麻""电流在爬"这类写震动的句子，这一档换成被吸住、被扯着、一阵阵发紧。',
+        '· 九种模式照"吸的节奏"理解：脉冲是一口一口地吸，潮汐是慢慢吸紧又慢慢松开，心跳是连着两口、后一口更深，暴雨是密到数不清口数，临界是吸到最紧再突然松掉。',
+        '· 写"吮""拉""吸紧""含住又松开""被扯着"，不要写"震""嗡""麻""颤"——那是另一种装置。',
+        '· 松开的那一瞬比吸住更难熬：刚被放开，下一口又来了。'
+      ],
+      tip: '不是震，是一下下抽吸、含住又松开，重心在最敏感的那一点；模式名照吸的节奏理解。',
+      keys: ['吸', '吮', '含住', '吸吮']
+    },
+    plug: {
+      name: '后庭',
+      note: '震动后庭塞，重心在后腰和会阴，坐下会顶到。男女都能用。',
+      desc: '__WEARER__ 后面塞着一枚小巧的遥控震动塞，整个埋在里面、几乎无声，只有 __WEARER__ 自己感觉得到，外人看不出来。',
+      feel: [
+        '· 装置在后面，震感的重心在后腰、会阴、尾椎，再往前漫到小腹；④ 里写"小腹""大腿内侧"的地方，起点改成从后面往前传。',
+        '· 坐下去会顶到：坐实、靠椅背、往后一仰，压力一变它就往里顶一下。坐着比站着难熬，所以会想站，站起来又不知道该往哪站。',
+        '· 走路时步子变小、变僵，腰不敢扭；弯腰、蹲下是最危险的动作。',
+        '· 男女都适用：男性身体时它正好压在前列腺附近，酸胀往根部和会阴沉。',
+        '· 外人看不出来，只看得见坐立不安。'
+      ],
+      tip: '在后面，重心在后腰、会阴、尾椎，再往前传；坐下、往后靠会顶到，坐着比站着难熬。',
+      keys: ['后庭', '后面', '肛塞', '尾椎']
+    },
+    clamp: {
+      name: '乳夹',
+      note: '一对震动乳夹，重心在胸口，衣料一蹭就更明显。',
+      desc: '__WEARER__ 胸口夹着一对小巧的遥控震动乳夹，藏在衣服底下、几乎无声，只有 __WEARER__ 自己感觉得到，外人看不出来。',
+      feel: [
+        '· 一对，两边同时震。重心在胸口：夹住的两点先是胀、发烫，震起来以后一阵阵往胸口里钻，再往下连到小腹；④ 里"小腹""大腿"的起点改成从胸口往下传。',
+        '· 衣料是最大的麻烦：抬手、转身、深呼吸、被人拍一下肩，布料一蹭，那两点就更明显。',
+        '· 下意识的动作是含胸、抱臂、把手挡在胸前、不敢挺直背——这些动作本身就是破绽。',
+        '· 呼吸会被它带着走：吸气时胸口一撑，夹着的地方就被扯一下。'
+      ],
+      tip: '一对，重心在胸口；抬手、转身、深呼吸时衣料一蹭就更明显，会下意识含胸、挡着。',
+      keys: ['乳夹', '夹子', '胸口', '乳尖']
+    },
+    ring: {
+      name: '震动环',
+      note: '男性向，套在根部。一般配合「男性身体」。',
+      desc: '__WEARER__ 根部套着一枚小巧的遥控震动环，藏在衣服底下、几乎无声，只有 __WEARER__ 自己感觉得到，外人看不出来。',
+      feel: [
+        '· 男性向。环套在根部，震感的重心在根部和会阴：往上沿着整根传，往后沉到尾椎。',
+        '· 它同时箍着：充血之后环勒得更紧，紧和震叠在一起，越有反应越难受，也越明显。',
+        '· 坐姿、并腿、裤子绷紧都会压到它；想调整又不能当着人伸手，只能换坐姿、往前倾、拿东西挡在腿上。',
+        '· 顶点之后照「男性身体」那条写不应期：环还在震，写的就是过载、想让它停。'
+      ],
+      tip: '套在根部，重心在根部和会阴，充血后勒得更紧；顶点之后照男性身体写不应期。',
+      keys: ['震动环', '套环', '根部']
+    }
+  };
+  function devOf() { return Object.prototype.hasOwnProperty.call(DEV, S.dev) ? DEV[S.dev] : DEV.patch; }
+  function hasDev(k) { return typeof k === 'string' && Object.prototype.hasOwnProperty.call(DEV, k); }
+
+  /* ⑨ 末尾那段「震还是吸」：默认版与 self 版的 ⑨ 用占位符 __VIBE__ 引用，吸吮式换成另一段 */
+  var WB_VIBE_NOTE = [
+    '【它是震，不是敲】',
+    '· 装置贴着皮肤高频震颤，感受是麻、酥、酸、发胀、一阵阵收不住，'
+      + '不是被什么东西敲打或撞击。',
+    '· 不要写「砰」「咚」「啪」「哐」这类撞击声，也不要写「砸」「捶」「碾」「钉」「撞开」'
+      + '这类动作 —— 这些会把震动写成打击。',
+    '· 声音方面：它只有极轻的嗡鸣，贴身时几乎听不出来。绝大多数情况下不需要描写声音；'
+      + '要写就写「嗡」这类持续的低频声，而且是被身体先感觉到、后来才注意到的那种。'
+  ].join('\n');
+  var WB_SUCK_NOTE = [
+    '【它是吸，不是震，也不是敲】',
+    '· 装置靠一下下的抽吸工作：吸紧、拉扯、含住又松开。感受是被吮住、被扯着、一阵阵发紧发胀，'
+      + '不是麻，也不是被什么东西敲打或撞击。',
+    '· 不要写「震」「颤」「嗡」「麻」这类震动的字眼；也不要写「砰」「咚」「啪」「哐」这类撞击声，'
+      + '和「砸」「捶」「碾」「钉」「撞开」这类动作。',
+    '· 声音方面：它几乎无声。绝大多数情况下不需要描写声音；'
+      + '要写就写极轻的、贴身的抽吸声，而且是被身体先感觉到、后来才注意到的那种。'
+  ].join('\n');
+
   /* =========================================================
    * 通用世界书设定
    *
@@ -933,8 +1153,8 @@ textarea{
       order: 101,
       content: [
         '【既成事实】',
-        '{{char}} 身上已经戴着一枚小巧的遥控震动装置，在此之前就已经戴上了。',
-        '它贴着皮肤、几乎无声，只有 {{char}} 自己感觉得到，外人看不出来。',
+        '__DEV__',
+        '它在此之前就已经戴上了。',
         '来源不必交代：{{user}} 没问过，{{char}} 也没主动提，这件事在两人之间是默认的背景。',
         '如果剧情里被问起，按 {{char}} 的性格临场给一句解释即可（一场没赢的赌局、朋友开的玩笑、一次冲动），说完就过去，不要展开成回忆段落。',
         '',
@@ -969,7 +1189,7 @@ textarea{
       order: 90,
       content: [
         '【装置设定】',
-        '{{user}} 手上有一只遥控器，能远程操控 {{char}} 身上那枚贴着皮肤的小装置。装置小巧无声，只有 {{char}} 自己感觉得到，外人看不出来。',
+        '{{user}} 手上有一只遥控器，能远程操控 {{char}} 身上的装置。__DEV__',
         '',
         '九种模式：脉冲（短促点动）、潮汐（绵长起伏）、心跳（两下连着的强震，后一下更重）、渐强（缓慢爬到顶再落下）、乱流（毫无规律，猜不到下一下）、撩拨（长时间空着，偶尔来一下）、暴雨（密集连击不留空隙）、临界（顶在高位再突然撤走）、冲刺（短时间直冲顶点，到顶后装置自动停下）。',
         '频率决定节奏快慢，强度决定力度大小。低频高强是拖着磨，高频低强是细密的痒。',
@@ -1119,13 +1339,7 @@ textarea{
         '· 节奏上每次只往前走一小步：这一回合的失控程度只比上一回合深一点，不要一口气写到底。',
         '· {{char}} 还在强撑，就写出强撑的破绽；已经放弃抵抗，就写 {{char}} 怎么被推着走。',
         '',
-        '【它是震，不是敲】',
-        '· 装置贴着皮肤高频震颤，感受是麻、酥、酸、发胀、一阵阵收不住，'
-          + '不是被什么东西敲打或撞击。',
-        '· 不要写「砰」「咚」「啪」「哐」这类撞击声，也不要写「砸」「捶」「碾」「钉」「撞开」'
-          + '这类动作 —— 这些会把震动写成打击。',
-        '· 声音方面：它只有极轻的嗡鸣，贴身时几乎听不出来。绝大多数情况下不需要描写声音；'
-          + '要写就写「嗡」这类持续的低频声，而且是被身体先感觉到、后来才注意到的那种。'
+        '__VIBE__'
       ].join('\n')
     },
     {
@@ -1669,7 +1883,9 @@ textarea{
     audio: false,
     inject: true,
     manageWb: true,    // 自动把通用设定写进世界书并挂到当前角色卡
-    target: 'char',    // char：装置作用在对方（角色）身上；user：作用在自己（玩家）身上
+    target: 'char',    // char：装置在对方（角色）身上、遥控器在玩家手里；user：装置在玩家身上、遥控器在角色手里；self：装置和遥控器都在玩家这
+    holder: '',        // 「对方是谁」：非空时代替角色卡名（世界卡 / 多人卡用）
+    dev: 'patch',      // 装置形态：DEV 表里的键
     body: 'female',    // 被作用者的身体：female | male，决定反应条目用哪一版
     explicit: true,    // 描写尺度：true 直写体内；false 切「忍耐 · 假装镇定」，只写外部可观察的表现
     begDocile: true,   // 遥控器在角色手里时，角色是否一求就停；关掉则要请求两三次
@@ -1693,7 +1909,7 @@ textarea{
     if (S.actions.length > 3) S.actions.shift();
   }
 
-  // 动作的主语随作用对象变：默认玩家拨遥控器，切到"自己"后由角色操作
+  // 动作的主语随作用对象变：遥控器在谁手里谁来拨。只有 user 档是角色在按；char / self 都是玩家自己按
   function act(asPlayer, asNpc) {
     return S.target === 'user' ? asNpc : asPlayer;
   }
@@ -1702,7 +1918,8 @@ textarea{
      由 paintTarget() 在切换时同步。数值必须和 :root / #shell.tgt-user 对得上。 */
   var THEME_RGB = {
     char: { hot: '192,108,194', hot2: '226,182,223', cyan: '214,189,150' },
-    user: { hot: '224,86,111', hot2: '242,176,186', cyan: '214,189,150' }
+    user: { hot: '224,86,111', hot2: '242,176,186', cyan: '214,189,150' },
+    self: { hot: '192,108,194', hot2: '226,182,223', cyan: '214,189,150' }   // 遥控器在你手里，和 char 同色
   };
   var HOT_RGB = THEME_RGB.char.hot;
   var HOT_RGB_2 = THEME_RGB.char.hot2;
@@ -1710,8 +1927,9 @@ textarea{
 
   /* 取当前扮演的角色名。
      注入里直接点名（而不是写"角色"）——"角色"这种词 AI 会自己找参照，
-     在多 NPC 的卡上很容易指错人，写成具体名字就没有歧义。 */
-  function charName() {
+     在多 NPC 的卡上很容易指错人，写成具体名字就没有歧义。
+     设置页填了「对方是谁」（S.holder）就用它：世界卡 / 沙盒卡的卡名是世界名、旁白、系统，不是一个人。 */
+  function rawCharName() {
     var n = '';
     try {
       var f = th('getCurrentCharacterName');
@@ -1722,6 +1940,15 @@ textarea{
     }
     return n || '角色';
   }
+  function charName() {
+    var h = (typeof S.holder === 'string') ? S.holder.trim() : '';
+    return h || rawCharName();
+  }
+  /* 装置戴在谁身上 / 遥控器在谁手里。三档各不相同，凡是要写主语的地方走这两个，别直接用 charName()。
+     forUi=true 给面板上的字用（玩家看，叫「你」）；默认给 AI 看的提示词用（叫「玩家」——
+     提示词里的「你」是 AI 扮演的那一方，写「你」会被读成角色自己）。 */
+  function wearerName(forUi) { return S.target === 'char' ? charName() : (forUi ? '你' : '玩家'); }
+  function holderName(forUi) { return S.target === 'user' ? charName() : (forUi ? '你' : '玩家'); }
 
   // 频率换算：滑杆 1..100 → 0.6 .. 20 Hz（对数手感）
   function hzOf(v) { return round(0.6 * Math.pow(33.3, (v - 1) / 99), 1); }
@@ -1973,7 +2200,7 @@ textarea{
           if (m.oneShot) {
             S.aro = 100;
             S.stage = 5;
-            S.lastEvent = '冲刺到顶，' + charName() + '直接到了顶点，装置随即自动停下';
+            S.lastEvent = '冲刺到顶，' + wearerName() + '直接到了顶点，装置随即自动停下';
             toast('冲刺完成');
             stop('冲刺到顶');
             HAP.fire(S.env, hz());
@@ -2046,11 +2273,22 @@ textarea{
     var sn = STAGES[S.stage - 1].name;
     var L = [];
     var cn = charName();
+    var selfT = (S.target === 'self');
+    var wn = wearerName();    // 装置戴在谁身上：char 档是 cn，另两档是玩家
+    var hn = holderName();    // 遥控器在谁手里：user 档是 cn，另两档是玩家
+    var dv = devOf();
+    var suck = (S.dev === 'suck');
     L.push('【TOY·LINK 装置 · 实时状态】');
     // 归属必须写死、而且要点名：光靠世界书那一条很容易被角色卡自己的设定盖过去，
     // 用"角色""对方"这类词也容易被多 NPC 的卡指错人。
     if (S.target === 'user') {
       L.push('归属：装置戴在【玩家自己】身上，遥控器在【' + cn + '】手里。被震动的是玩家，不是 ' + cn + '。');
+    } else if (selfT) {
+      // 自己玩：世界卡 / 沙盒卡上 cn 可能是「系统」「旁白」，AI 会顺手安排它来拿遥控器 —— 这里必须堵死
+      L.push('归属：装置戴在【玩家自己】身上，遥控器也在【玩家自己】手里。没有人在操控、没有人知道。'
+        + '不要安排 ' + cn + ' 或任何人来拿遥控器。');
+      L.push('▲ 档位全由玩家自己按。不要凭空安排人物登场；场景里如果有别人，他们不知道装置的存在，'
+        + '只能注意到玩家外在的异样。' + cn + ' 是旁白、世界、系统这类身份时，用旁白视角写。');
     } else {
       L.push('归属：装置戴在【' + cn + '】身上。【玩家】身上没有装置，玩家手里只有遥控器。');
       L.push('▲ 被震动、被刺激、出现身体反应的是 ' + cn + '，不是玩家。'
@@ -2058,6 +2296,8 @@ textarea{
       L.push('▲ 如果前面的楼层里出现过"贴着你""你的大腿发软"这类描写，那是写错了：'
         + '从这条回复开始一律改成写 ' + cn + ' 的身体，直接改过来，不要解释这件事。');
     }
+    // 描述句里占位符两侧的空格是给 {{char}} 宏留的，换成中文名字时一并吃掉
+    L.push('装置形态：' + dv.name + '（' + dv.desc.replace(/ ?__WEARER__ ?/g, wn) + '）');
     L.push('运行状态：' + (S.on ? '运行中（装置此刻正在工作）' : '已停止（' + (S.stopReason || '已关闭') + '）'));
     L.push('模式：' + m.name + '｜频率：' + hz().toFixed(1) + ' Hz｜强度：' + S.pow + '%');
     L.push('已持续：' + fmtTime(S.t) + (S.limit > 0 ? '｜本次限时：' + S.limit + ' 分钟' : ''));
@@ -2068,7 +2308,7 @@ textarea{
     }
     L.push('');
     if (S.actions.length) {
-      L.push('玩家刚刚在遥控器上的操作：');
+      L.push(hn + '刚刚在遥控器上的操作：');   // user 档动作是 TA 按的（act 的 asNpc 那半），主语不能写成玩家
       for (var k = 0; k < S.actions.length; k++) L.push('　' + (k + 1) + '. ' + S.actions[k]);
       L.push('');
     }
@@ -2092,22 +2332,33 @@ textarea{
         : '· 被作用者的身体是【女性】：没有明确的不应期，一波刚落下一波就能接上，累积回落之后反而更敏感，'
           + '所以顶点不是"结束"，而是下一轮更容易被推上去的起点。');
     }
+    L.push('· 装置形态是【' + dv.name + '】：' + dv.tip);
     // 冲刺到顶是个特殊时刻：装置已经停了，但正文要写的是"她刚到顶点"这件事
     if (S.stopReason && S.stopReason.indexOf('冲刺') === 0) {
       L.push(S.explicit
-        ? '▲ ' + cn + ' 刚被冲刺模式一路推到顶点。这一轮正文就写这次高潮本身：到达的那一刻、脱力的痉挛、'
+        ? '▲ ' + wn + ' 刚被冲刺模式一路推到顶点。这一轮正文就写这次高潮本身：到达的那一刻、脱力的痉挛、'
           + '止不住的眼泪与随后的余韵。不要写慢慢积累的过程，也不要把重点放在"装置停了"上。'
-        : '▲ ' + cn + ' 刚被冲刺模式一路推到顶点。这一轮不写体内的过程，只写"装不住了"的那一下：'
+        : '▲ ' + wn + ' 刚被冲刺模式一路推到顶点。这一轮不写体内的过程，只写"装不住了"的那一下：'
           + '话断在半句、身体从支撑物上滑下去、几秒里发不出声音；随后是脱力、发愣、手抖，以及收拾自己。'
           + '不要写慢慢积累的过程，也不要把重点放在"装置停了"上。');
     }
+    // 三档互斥：谁被作用、谁拿遥控器、正文该写谁
     if (S.target === 'user') {
       L.push('· 被作用的是玩家，不是你。写 ' + cn + ' 的掌控动作、表情变化和说的话；玩家身体上的外在反应可以写，但不要替玩家写内心想法和台词。');
+    } else if (selfT) {
+      L.push('· 装置和遥控器都在玩家自己身上，没有人在操控。不要安排 ' + cn + ' 或任何人登场来拿遥控器、调档位、发现装置；'
+        + '场景里如果有别人，他们只能注意到玩家外在的异样，不知道原因。');
     } else {
       L.push('· 装置戴在 ' + cn + ' 身上，玩家身上没有装置，玩家手里只有遥控器。不要写成玩家自己在被震动，也不要把遥控器写到 ' + cn + ' 手里。');
     }
     if (S.actions.length) {
-      L.push('· 回复的开头先用一两句话，从玩家的视角描写玩家刚才这些操作（按了什么键、拨到哪一档），再接着写 ' + cn + ' 的身体反应。动作描写要简短，不要展开成玩家的心理活动，也不要替玩家说台词。');
+      if (S.target === 'user') {
+        L.push('· 回复的开头先用一两句话写 ' + cn + ' 刚才这些操作（按了什么键、拨到哪一档），再接着写玩家身体上的反应。动作描写要简短。');
+      } else if (selfT) {
+        L.push('· 回复的开头先用一两句话写玩家刚才自己按下的这些操作（按了什么键、拨到哪一档），再接着写玩家自己的身体反应。动作描写要简短，不要替玩家说台词。');
+      } else {
+        L.push('· 回复的开头先用一两句话，从玩家的视角描写玩家刚才这些操作（按了什么键、拨到哪一档），再接着写 ' + cn + ' 的身体反应。动作描写要简短，不要展开成玩家的心理活动，也不要替玩家说台词。');
+      }
     }
     if (S.on) {
       L.push('· 装置此刻正在运行。不要描写它被关闭、被取下、被调低，也不要假设玩家按了上面没提到的键。');
@@ -2115,23 +2366,42 @@ textarea{
       L.push('· 装置此刻不在运行，可以写余韵和恢复，但不要描写新的震动。');
       if (S.stopReason) L.push('· 停止原因：' + S.stopReason + '。按这个原因来写，不要改写成玩家手动关掉。');
     }
-    L.push('· 正文主体是 ' + cn + ' 的反应：写清部位、程度、' + cn + ' 的应对，以及环境声音的变化，不要写结论句。');
-    L.push('· 不要替玩家行动、说话，也不要替玩家决定剧情走向。');
+    if (selfT) {
+      // 没有别人可写：主体落在玩家身上，这一档允许写玩家的身体与内心感受，但主动决定仍归玩家
+      L.push('· 正文主体是玩家的身体反应与周围环境：写清部位、程度、玩家在忍什么，以及声音、别人的目光、手头正在做的事被打断。'
+        + '这一档允许写玩家的身体与内心感受，但不要写结论句。');
+      L.push('· 不要替玩家做主动决定：不替玩家改档位、不替玩家关掉装置、不替玩家说台词（不自主漏出的气音、闷哼可以写）。');
+    } else {
+      L.push('· 正文主体是 ' + cn + ' 的反应：写清部位、程度、' + cn + ' 的应对，以及环境声音的变化，不要写结论句。');
+      L.push('· 不要替玩家行动、说话，也不要替玩家决定剧情走向。');
+    }
     L.push('');
     // 面板上只显示这一句，正文在聊天记录里已经有了，面板再放一遍就是重复
     L.push('【正文之后另起一行，附一句心声】');
     L.push('格式必须完全照下面这样，单独一行：');
-    L.push('<TOY>心声=' + cn + '此刻心里真正的想法</TOY>');
-    L.push('· 写 ' + cn + ' 心里想的，不是嘴上说的 —— 口是心非的时候，这里要写实话。');
+    if (selfT) {
+      L.push('<TOY>心声=玩家此刻心里真正压不住的念头</TOY>');
+      L.push('· 写玩家此刻心里真正压不住的念头，不是嘴上说的 —— 越是装没事，这里越要写实话。');
+    } else {
+      L.push('<TOY>心声=' + cn + '此刻心里真正的想法</TOY>');
+      L.push('· 写 ' + cn + ' 心里想的，不是嘴上说的 —— 口是心非的时候，这里要写实话。');
+    }
     L.push('· 一句话，25 字以内，不要引号，不要句号结尾。');
     L.push('· 这一行是给面板读的，正文里绝对不要提到它，也不要解释这是什么。');
     L.push('· 不要出现"装置状态""系统""面板""数据"这类词，也不要复述上面的数字，用身体去表现它们。');
     // 模式名里如果出现"重击"这类打击乐比喻，模型会顺着写成"砰、砰"的敲击声。
     // 它贴在皮肤上高频震颤，不是被敲打，所以这一条必须写死。
-    L.push('· 它是**震**，不是敲：感受是麻、酥、酸、发胀，不要写"砰""咚""啪"这类撞击声，'
-      + '也不要写"砸""捶""碾""撞开"这类动作。');
-    L.push('· 它只有极轻的嗡鸣，贴身几乎听不出来 —— 大多数情况下不用写声音；'
-      + '要写就写持续的低频"嗡"，不要写有节拍的闷响。');
+    if (suck) {
+      // 吸吮式不是震：照搬下面那两条会把它写成「嗡嗡发麻」
+      L.push('· 它是**吸**，不是震，也不是敲：感受是被抽吸、被拉扯、含住又松开，不要写"震""嗡""麻"，'
+        + '也不要写"砰""咚""啪"这类撞击声和"砸""捶""碾""撞开"这类动作。');
+      L.push('· 它几乎无声 —— 大多数情况下不用写声音；要写就写极轻的、贴身的抽吸声，不要写有节拍的闷响。');
+    } else {
+      L.push('· 它是**震**，不是敲：感受是麻、酥、酸、发胀，不要写"砰""咚""啪"这类撞击声，'
+        + '也不要写"砸""捶""碾""撞开"这类动作。');
+      L.push('· 它只有极轻的嗡鸣，贴身几乎听不出来 —— 大多数情况下不用写声音；'
+        + '要写就写持续的低频"嗡"，不要写有节拍的闷响。');
+    }
     return L.join('\n');
   }
 
@@ -2237,12 +2507,22 @@ textarea{
    * ======================================================= */
   function wbEntriesForTavern() {
     var useUser = (S.target === 'user');
+    var useSelf = (S.target === 'self');
     var useMale = (S.body === 'male');
     var usePlain = !S.explicit;   // 忍耐 · 假装镇定：只写外部可观察的表现
+    var altMap = useUser ? WB_ENTRIES_ALT : (useSelf ? WB_ENTRIES_ALT_SELF : null);
+    // 装置形态：描述句里的主语按作用对象换（char 档戴在 {{char}} 身上，另两档戴在 {{user}} 身上）
+    var dev = devOf();
+    var devDesc = dev.desc.split('__WEARER__').join(S.target === 'char' ? '{{char}}' : '{{user}}');
+    var vibeNote = (S.dev === 'suck') ? WB_SUCK_NOTE : WB_VIBE_NOTE;
+    var devFeel = ['【装置形态 · ' + dev.name + ' 怎么写】']
+      .concat(usePlain ? ['（忍耐档：下面只取看得见的部分——动作、姿态、被打断的地方；体内的感觉照样不写。）'] : [])
+      .concat(dev.feel).join('\n');
     var list = WB_ENTRIES.map(function (e) {
-      var alt = useUser && WB_ENTRIES_ALT[e.name];
+      var alt = altMap && altMap[e.name];
       var src = alt || e;
       var content = src.content;
+      var keys = e.keys || [];
       // 描写尺度优先于身体版本：忍耐档下男女各有一版外部表现条目
       // ④ 按被作用者的身体换整条：男女的顶点机制不同，不能共用一套
       if (usePlain && e.name === '⑧ 临界与停机（关键词触发）') {
@@ -2256,12 +2536,18 @@ textarea{
       } else if (usePlain && WB_PLAIN_ADDON[e.name]) {
         content = content + '\n' + WB_PLAIN_ADDON[e.name];
       }
+      // 装置形态：①③ 的描述句、⑨ 末尾的「震还是吸」、⑪ 末尾追加一段写法、③ 的触发词
+      content = content.split('__DEV__').join(devDesc).split('__VIBE__').join(vibeNote);
+      if (e.name === '⑪ 感受链怎么写（常驻）') content = content + '\n\n' + devFeel;
+      if (e.name === '③ 装置设定（关键词触发）') {
+        keys = keys.concat(dev.keys.filter(function (k) { return keys.indexOf(k) < 0; }));
+      }
       return {
         name: e.name,
         enabled: true,
         strategy: {
           type: e.strategy === 'selective' ? 'selective' : 'constant',
-          keys: e.keys || [],
+          keys: keys,
           keys_secondary: { logic: 'and_any', keys: [] },
           scan_depth: 'same_as_global'
         },
@@ -2278,8 +2564,8 @@ textarea{
         extra: { toylink_managed: VERSION }   // 标记：这本世界书由本脚本管理
       };
     });
-    if (useUser) {
-      var x = WB_EXTRA_USER;
+    if (useUser || useSelf) {
+      var x = useSelf ? WB_EXTRA_SELF : WB_EXTRA_USER;
       list.push({
         name: x.name,
         enabled: true,
@@ -2299,12 +2585,17 @@ textarea{
       enabled: true,
       strategy: { type: 'constant', keys: [], keys_secondary: { logic: 'and_any', keys: [] }, scan_depth: 'same_as_global' },
       position: { type: anchor.position, role: anchor.role, depth: anchor.depth, order: anchor.order },
-      content: useUser ? WB_ANCHOR_USER.content : anchor.content,
+      content: useUser ? WB_ANCHOR_USER.content : (useSelf ? WB_ANCHOR_SELF.content : anchor.content),
       probability: 100,
       recursion: { prevent_incoming: false, prevent_outgoing: false, delay_until: null },
       effect: { sticky: null, cooldown: null, delay: null },
       extra: { toylink_managed: VERSION }
     });
+    // 「对方是谁」：填了名字就把所有 {{char}} 换成它。用 split/join 不用正则，名字里有什么符号都原样保留
+    var hold = (typeof S.holder === 'string') ? S.holder.trim() : '';
+    if (hold) {
+      list.forEach(function (it) { it.content = it.content.split('{{char}}').join(hold); });
+    }
     return list;
   }
 
@@ -2639,6 +2930,13 @@ textarea{
     var note = pick('说明');
     var heart = pick('心声');   // 面板上显示这一句，不放正文
 
+    // 只有遥控器在 TA 手里时，读数里的档位才算数。另两档遥控器在玩家手里，AI 只交心声；
+    // 以前这里不分档，每条回复都会把「最近变化」写成「××调到：维持原档」——
+    // 自己玩那一档里 ×× 是「系统」「旁白」，AI 读到就以为有人拿着遥控器。
+    if (S.target !== 'user') {
+      return { text: raw.replace(/<TOY>[\s\S]*?<\/TOY>/gi, '').trim(), applied: false, heart: heart };
+    }
+
     var changed = [];
     var i;
     for (i = 0; i < MODES.length; i++) {
@@ -2684,8 +2982,7 @@ textarea{
   /* 用户和状态之间的翻译层：拿不到心声时不要编。
      硬凑一句"她心里想着……"是假的，不如老实报当前档位。 */
   function heartFallback() {
-    var cn = charName();
-    if (!S.on) return cn + '还没被碰到 · 装置待机';
+    if (!S.on) return wearerName(true) + '还没被碰到 · 装置待机';   // 装置戴在谁身上就说谁
     return '强度 ' + S.pow + '% · 第 ' + S.stage + ' 阶段·' + STAGES[S.stage - 1].name;
   }
 
@@ -2773,13 +3070,20 @@ textarea{
     var v = $('#v-chat');
     v.scrollTop = v.scrollHeight;
   }
+  /* 心声是谁的：自己玩那一档没有 TA，心声写的是玩家自己压不住的念头 */
+  function heartLabel() { return S.target === 'self' ? '你的心声' : 'TA 的心声'; }
+  function feedEmptyHtml() {
+    return '<div class="feed-empty">还没有心声<br>' + (S.target === 'self'
+      ? '装置跑起来之后，你自己压不住的念头会显示在这里'
+      : '装置跑起来之后，TA 心里在想什么会显示在这里') + '</div>';
+  }
   function pushMsg(kind, text) {
     var feed = $('#feed');
     var empty = feed.querySelector('.feed-empty');
     if (empty) empty.remove();
     var el = document.createElement('div');
     el.className = 'msg ' + (kind === 'ai' ? 'ai' : (kind === 'me' ? 'me' : 'sys'));
-    var who = kind === 'ai' ? 'TA 的心声' : (kind === 'me' ? '你' : '装置');
+    var who = kind === 'ai' ? heartLabel() : (kind === 'me' ? '你' : '装置');
     el.innerHTML = '<div class="who"><i></i>' + who + '</div><div class="bubble"></div>';
     el.querySelector('.bubble').textContent = text || '';
     feed.appendChild(el);
@@ -3036,7 +3340,7 @@ textarea{
     } catch (e) { toast('复制失败，请手动选择'); }
   }
   $('#c-wipe').addEventListener('click', function () {
-    $('#feed').innerHTML = '<div class="feed-empty">还没有心声<br>装置跑起来之后，TA 心里在想什么会显示在这里</div>';
+    $('#feed').innerHTML = feedEmptyHtml();
     toast('记录已清空');
   });
   $('#c-reset').addEventListener('click', function () {
@@ -3056,6 +3360,19 @@ textarea{
     if (sendBtn) sendBtn.textContent = (S.sendMode === 'slash' ? 'slash /trigger' : 'generate');
     var bodyBtn = $('#s-body');
     if (bodyBtn) bodyBtn.textContent = (S.body === 'male' ? '男性' : '女性');
+    var holderIn = $('#s-holder');
+    if (holderIn) {
+      holderIn.value = S.holder || '';
+      holderIn.placeholder = rawCharName();   // 留空时用的就是它，直接摆给人看
+    }
+    var devBox = $('#s-dev');
+    if (devBox) {
+      for (var di = 0; di < devBox.children.length; di++) {
+        devBox.children[di].classList.toggle('on', devBox.children[di].getAttribute('data-dev') === S.dev);
+      }
+    }
+    var devNote = $('#s-dev-note');
+    if (devNote) devNote.textContent = devOf().note;
     var expSw = $('#s-explicit');
     if (expSw) expSw.classList.toggle('on', S.explicit);
     var scaleNote = $('#s-scale-note');
@@ -3119,19 +3436,29 @@ textarea{
 
   /* 作用对象：首页顶部的分段开关。
      切到「自己」后整台机器换一套身份——不是换几个参数，而是从"遥控台"变成"只读仪表"：
-     配色换成酒红、档位控件锁住、当前档位只等 TA 的回复来更新。 */
+     配色换成酒红、档位控件锁住、当前档位只等 TA 的回复来更新。
+     第三档「自己玩」：遥控器在玩家自己手里，所以和 char 档一样是可操作的梅紫遥控台，只是没有 TA。 */
   function paintTarget() {
     var user = (S.target === 'user');
+    var selfT = (S.target === 'self');
     // 画布上色跟着主题走
-    var tc = THEME_RGB[user ? 'user' : 'char'];
+    var tc = THEME_RGB[S.target] || THEME_RGB.char;
     HOT_RGB = tc.hot; HOT_RGB_2 = tc.hot2; CYAN_RGB = tc.cyan;
     var shell = $('#shell');
-    if (shell) shell.classList.toggle('tgt-user', user);
+    if (shell) {
+      shell.classList.toggle('tgt-user', user);
+      shell.classList.toggle('tgt-self', selfT);
+    }
     var tb = $('#tgtbar');
     if (tb) tb.setAttribute('data-t', S.target);
-    var cb = $('#tgt-char'), ub = $('#tgt-user');
-    if (cb) cb.classList.toggle('on', !user);
-    if (ub) ub.classList.toggle('on', user);
+    ['char', 'user', 'self'].forEach(function (k) {
+      var b = $('#tgt-' + k); if (b) b.classList.toggle('on', S.target === k);
+    });
+    // 心声页：自己玩没有 TA
+    var chatTab = $('.tab[data-go="chat"]');
+    if (chatTab) chatTab.innerHTML = '<b>❖</b>' + heartLabel();
+    var empty = $('#feed .feed-empty');
+    if (empty) empty.outerHTML = feedEmptyHtml();
 
     // 档位控件降级为只读：看得见，点不动
     var dev = $('#v-device');
@@ -3240,7 +3567,7 @@ textarea{
 
   /* 只有这一个入口改 S.target，避免两处状态各说各话 */
   function setTarget(t, notify) {
-    if (t !== 'user' && t !== 'char') return;
+    if (t !== 'user' && t !== 'char' && t !== 'self') return;
     if (S.on) return;            // 运行中不许换，兜底
     if (S.target === t) return;
     S.target = t;
@@ -3251,13 +3578,17 @@ textarea{
     persist();
     S.lastEvent = (t === 'user')
       ? '装置改为作用在玩家身上，遥控器交到 ' + charName() + ' 手里'
-      : '装置改为作用在 ' + charName() + ' 身上，遥控器在玩家手里';
+      : (t === 'self'
+        ? '装置改为戴在玩家自己身上，遥控器也在玩家自己手里'
+        : '装置改为作用在 ' + charName() + ' 身上，遥控器在玩家手里');
     syncWorldbook(true);   // 世界书要按新模式整本重写
     HAP.tap(t === 'user' ? 30 : 22);
     if (notify) {
       toast(t === 'user'
         ? '已切换：遥控器交给' + charName() + '，档位由 TA 决定'
-        : '已切换：遥控器回到你手里', 2600);
+        : (t === 'self'
+          ? '已切换：自己玩，遥控器和装置都在你这'
+          : '已切换：遥控器回到你手里'), 2600);
     }
   }
   $('#s-inject').addEventListener('click', function () { S.inject = !S.inject; bindSettings(); persist(); });
@@ -3281,6 +3612,44 @@ textarea{
       return;
     }
     setTarget(btn.dataset.t, true);
+  });
+  /* 「对方是谁」：世界卡 / 多人卡上卡名不是一个人，填了名字，世界书里的 {{char}} 和注入里的点名都认它 */
+  function commitHolder() {
+    var el = $('#s-holder'); if (!el) return;
+    var v = String(el.value || '').trim().slice(0, 24);
+    el.value = v;
+    if (v === S.holder) return;   // change 和 blur 会先后各来一次，第二次什么都不做
+    S.holder = v;
+    persist();
+    syncWorldbook(true);          // {{char}} 要整本换掉
+    bindSettings();
+    toast(v ? '对方改为 ' + v : '对方恢复为角色卡名', 2400);
+  }
+  $('#s-holder').addEventListener('change', commitHolder);
+  $('#s-holder').addEventListener('blur', commitHolder);
+
+  /* 装置形态：换的是世界书 ①③ 的描述、③ 的触发词、⑪ 末尾的写法，运行中不许换（和作用对象同一个道理） */
+  $('#s-dev').addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('.chip') : null;
+    if (!b) return;
+    var k = b.getAttribute('data-dev');
+    if (!hasDev(k)) return;
+    if (S.on) {
+      HAP.tap([0, 18, 22, 18]);
+      toast('装置运行中不能换形态，先停下', 2600);
+      return;
+    }
+    if (S.dev === k) return;
+    S.dev = k;
+    bindSettings();
+    persist();
+    S.lastEvent = '装置形态改为' + DEV[k].name;
+    syncWorldbook(true);
+    HAP.tap(22);
+    toast('装置形态：' + DEV[k].name);
+    if (k === 'ring' && S.body !== 'male') {
+      setTimeout(function () { toast('震动环一般配合「男性身体」', 2800); }, 300);
+    }
   });
   $('#s-body').addEventListener('click', function () {    S.body = (S.body === 'male') ? 'female' : 'male';
     bindSettings();
@@ -3412,6 +3781,8 @@ textarea{
       toy_cfg_managewb: S.manageWb,
       toy_cfg_sendmode: S.sendMode,
       toy_cfg_target: S.target,
+      toy_cfg_holder: S.holder,
+      toy_cfg_dev: S.dev,
       toy_cfg_body: S.body,
       toy_cfg_explicit: S.explicit,
       toy_cfg_begdocile: S.begDocile,
@@ -3437,7 +3808,9 @@ textarea{
     if (typeof v.toy_cfg_freeze === 'boolean') S.freezeOnGen = v.toy_cfg_freeze;
     if (typeof v.toy_cfg_managewb === 'boolean') S.manageWb = v.toy_cfg_managewb;
     if (v.toy_cfg_sendmode === 'slash' || v.toy_cfg_sendmode === 'generate') S.sendMode = v.toy_cfg_sendmode;
-    if (v.toy_cfg_target === 'user' || v.toy_cfg_target === 'char') S.target = v.toy_cfg_target;
+    if (v.toy_cfg_target === 'user' || v.toy_cfg_target === 'char' || v.toy_cfg_target === 'self') S.target = v.toy_cfg_target;
+    if (typeof v.toy_cfg_holder === 'string') S.holder = v.toy_cfg_holder.trim().slice(0, 24);
+    if (hasDev(v.toy_cfg_dev)) S.dev = v.toy_cfg_dev;
     if (v.toy_cfg_body === 'male' || v.toy_cfg_body === 'female') S.body = v.toy_cfg_body;
     // 老聊天里没有这个键，缺失时保持默认（直写），不改变已有存档的行为
     if (typeof v.toy_cfg_explicit === 'boolean') S.explicit = v.toy_cfg_explicit;
