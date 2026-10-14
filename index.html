@@ -1305,7 +1305,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.17';
+  var VERSION = '1.13.18';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -6380,9 +6380,64 @@ textarea{
   }
 
   /* =========================================================
-   * 10. 设置持久化（消息楼层变量，随聊天走）
+   * 10. 设置持久化 —— 分两处存，因为这两类东西的生命周期根本不同
+   *
+   *  A. 语音接口配置（平台 / 地址 / 令牌 / 音色 / 模型…）
+   *     这是"我这台机器怎么连中转"，与玩哪个聊天无关。
+   *     存全局变量 + 本机 localStorage —— 新建对话、换角色卡、换聊天都还在。
+   *
+   *  B. 剧情会话状态（作用对象、装置形态、模式、频率、强度…）
+   *     这些和"这一局怎么玩"绑定，应当随聊天各自独立。
+   *     仍存聊天变量，新建对话回到默认值是正确的。
+   *
+   * 早先全塞进聊天变量里，结果是每开一个新对话都要重填地址与令牌 —— 那是错的。
    * ======================================================= */
+  var LS_KEY = 'toylink_cfg_v1';
+
+  function lsSave(obj) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch (e) { /* 无痕模式等情形忽略 */ }
+  }
+  function lsLoad() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null') || {}; } catch (e) { return {}; }
+  }
+
+  /* A 类：与聊天无关的接口配置 */
+  function persistGlobal() {
+    var g = {
+      toy_tts_platform: S.ttsPlatform,
+      toy_tts_target: S.ttsTarget,
+      toy_tts_key: S.ttsKey,
+      toy_tts_proxy: S.ttsProxy,
+      toy_tts_transport: S.ttsTransport,
+      toy_tts_auth: S.ttsAuth,
+      toy_tts_voice: S.ttsVoice,
+      toy_tts_voicet: S.ttsVoiceTease,
+      toy_tts_model: S.ttsModel,
+      toy_tts_format: S.ttsFormat,
+      toy_tts_speed: S.ttsSpeed,
+      toy_tts_modelhdr: S.ttsModelHdr,
+      toy_tts_reffield: S.ttsRefField,
+      toy_tts_nomodel: S.ttsNoModelHdr,
+      toy_tts_extra: S.ttsExtraHdrs,
+      toy_tts_latency: S.ttsLatency,
+      toy_tts_langboost: S.ttsLangBoost,
+      // 输出开关也算偏好：换聊天时不该被重置
+      toy_out_vol: S.voiceVol,
+      toy_out_auto: S.voiceAuto,
+      toy_out_warm: S.voiceWarm,
+      toy_out_ai: S.voiceAI,
+      toy_out_haptap: S.hapticTap,
+      toy_out_hapfol: S.hapticFollow,
+      toy_out_audio: S.audio,
+      toy_out_voice: S.voice
+    };
+    lsSave(g);                       // 本机兜底：酒馆没就绪、或全局变量不可用时也记得住
+    BRIDGE.setVars(g, 'global');     // 全局变量：跟着用户存档走
+  }
+
+  /* B 类 + 兼容：聊天级状态照旧写聊天变量 */
   function persist() {
+    persistGlobal();
     if (!BRIDGE.ready) return;
     var blob = {
       toy_cfg_drive: S.drive,
@@ -6407,7 +6462,7 @@ textarea{
       toy_cfg_mode: S.mode,
       toy_cfg_freq: S.freq,
       toy_cfg_pow: S.pow,
-      // 语音（VOC）
+      // 语音（VOC）：接口部分已在全局，这里只留会话相关的
       toy_cfg_voice: S.voice,
       toy_cfg_voicevol: S.voiceVol,
       toy_cfg_voiceauto: S.voiceAuto,
@@ -6425,6 +6480,7 @@ textarea{
       toy_cfg_langboost: S.ttsLangBoost,
       toy_cfg_target_url: S.ttsTarget,
       toy_cfg_ttsvoice: S.ttsVoice,
+      toy_cfg_ttsvoicet: S.ttsVoiceTease,
       toy_cfg_ttsmodel: S.ttsModel,
       toy_cfg_ttsformat: S.ttsFormat,
       toy_cfg_ttsspeed: S.ttsSpeed,
@@ -6432,7 +6488,48 @@ textarea{
     };
     BRIDGE.setVars(blob, 'chat');
   }
+
+  /* 恢复顺序很关键：全局配置 → 聊天状态 →（聊天里若也存过接口配置，说明是旧存档，用它兜一次）
+     这样"新对话里接口配置还在"，而"旧存档里的配置也不会丢"。 */
+  function restoreGlobal() {
+    var fromLs = lsLoad();
+    var fromGlobal = BRIDGE.ready ? (BRIDGE.getVars('global') || {}) : {};
+    // 全局变量优先（它跟着用户存档走），localStorage 兜底
+    var g = {};
+    Object.keys(fromLs).forEach(function (k) { g[k] = fromLs[k]; });
+    Object.keys(fromGlobal).forEach(function (k) { if (fromGlobal[k] != null) g[k] = fromGlobal[k]; });
+
+    if (typeof g.toy_tts_platform === 'string' && PLATFORMS[g.toy_tts_platform]) S.ttsPlatform = g.toy_tts_platform;
+    if (typeof g.toy_tts_target === 'string') S.ttsTarget = g.toy_tts_target;
+    if (typeof g.toy_tts_key === 'string') S.ttsKey = g.toy_tts_key;
+    if (typeof g.toy_tts_proxy === 'string') S.ttsProxy = g.toy_tts_proxy;
+    if (g.toy_tts_transport === 'direct' || g.toy_tts_transport === 'relay') S.ttsTransport = g.toy_tts_transport;
+    if (typeof g.toy_tts_auth === 'string') S.ttsAuth = g.toy_tts_auth;
+    if (typeof g.toy_tts_voice === 'string') S.ttsVoice = g.toy_tts_voice;
+    if (typeof g.toy_tts_voicet === 'string') S.ttsVoiceTease = g.toy_tts_voicet;
+    if (typeof g.toy_tts_model === 'string') S.ttsModel = g.toy_tts_model;
+    if (typeof g.toy_tts_format === 'string') S.ttsFormat = g.toy_tts_format;
+    if (typeof g.toy_tts_speed === 'number') S.ttsSpeed = clamp(g.toy_tts_speed, 0.5, 1.5);
+    if (typeof g.toy_tts_modelhdr === 'string' && g.toy_tts_modelhdr) S.ttsModelHdr = g.toy_tts_modelhdr;
+    if (typeof g.toy_tts_reffield === 'string' && g.toy_tts_reffield) S.ttsRefField = g.toy_tts_reffield;
+    if (typeof g.toy_tts_nomodel === 'boolean') S.ttsNoModelHdr = g.toy_tts_nomodel;
+    if (typeof g.toy_tts_extra === 'string') S.ttsExtraHdrs = g.toy_tts_extra;
+    if (['low', 'balanced', 'normal'].indexOf(g.toy_tts_latency) >= 0) S.ttsLatency = g.toy_tts_latency;
+    if (typeof g.toy_tts_langboost === 'boolean') S.ttsLangBoost = g.toy_tts_langboost;
+    if (typeof g.toy_out_vol === 'number') S.voiceVol = clamp(g.toy_out_vol, 0, 100);
+    if (typeof g.toy_out_auto === 'boolean') S.voiceAuto = g.toy_out_auto;
+    if (typeof g.toy_out_warm === 'boolean') S.voiceWarm = g.toy_out_warm;
+    if (typeof g.toy_out_ai === 'boolean') S.voiceAI = g.toy_out_ai;
+    if (typeof g.toy_out_haptap === 'boolean') S.hapticTap = g.toy_out_haptap;
+    if (typeof g.toy_out_hapfol === 'boolean') S.hapticFollow = g.toy_out_hapfol;
+    if (typeof g.toy_out_audio === 'boolean') S.audio = g.toy_out_audio;
+    if (VOICE_IDS.indexOf(g.toy_out_voice) >= 0) S.voice = g.toy_out_voice;
+  }
+
   function restore() {
+    /* 先恢复与聊天无关的接口配置 —— 它在酒馆未就绪时也要能读到（localStorage 兜底），
+       所以这一步放在 BRIDGE.ready 判断之前。 */
+    restoreGlobal();
     if (!BRIDGE.ready) return;
     var v = BRIDGE.getVars('chat') || {};
     if (typeof v.toy_cfg_drive === 'string') S.drive = v.toy_cfg_drive;
