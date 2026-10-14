@@ -412,6 +412,12 @@ input[type=range]::-moz-range-thumb{
 }
 .chip.on{border-color:var(--cyan-a75);color:#efe0c6;background:var(--cyan-a08)}
 .chip:active{transform:scale(.96)}
+/* 保存类按钮：和普通 chip 拉开一点，让人一眼找到"确认"在哪 */
+.chip.save{
+  border-color:var(--hot-a45);color:var(--hot-2);
+  background:linear-gradient(180deg,var(--hot-a20),var(--hot-a12));
+  font-weight:700;
+}
 
 /* ---------- 电源键 ---------- */
 .powerbar{
@@ -897,7 +903,7 @@ textarea{
       </div>
       <div id="s-direct-box">
         <div class="field col">
-          <div class="lb"><b>令牌</b><small><b style="color:var(--amber)">直连才需要填。</b>按密码处理：输入时是遮住的，右边可以临时看一眼。它会随聊天变量存进这个聊天文件里。</small></div>
+          <div class="lb"><b>令牌</b><small><b style="color:var(--amber)">直连才需要填。</b>按密码处理：输入时是遮住的，右边可以临时看一眼。它会存在本机（跟着用户存档），新建对话不用重填。</small></div>
           <div class="txt-wrap">
             <input class="txt" id="s-tts-key" type="password" placeholder="中转给你的 API Key" autocomplete="new-password" spellcheck="false" enterkeyhint="done" style="width:100%">
             <button type="button" class="eye" id="c-eye-key" aria-label="显示或隐藏令牌">显示</button>
@@ -959,6 +965,7 @@ textarea{
       <div class="chips">
         <button class="chip" id="c-voice-ping">连通性检查</button>
         <button class="chip" id="c-voice-ping2">两种方式都试一次</button>
+        <button class="chip save" id="c-save-conn">保存</button>
       </div>
       <div class="hint" id="vs-ping-hint">检查会先发一句空文本试探通道 —— 不会产生合成费用。</div>
     </section>
@@ -1021,6 +1028,13 @@ textarea{
       <div class="field">
         <div class="lb"><b>台词来源</b><small id="s-voiceai-note"></small></div>
         <button class="mini" id="s-voiceai">台词库</button>
+      </div>
+      <div class="chips">
+        <button class="chip" id="c-save-voice">保存音色与参数</button>
+      </div>
+      <div class="hint">
+        改动本来就是即时存下的，这个按钮是让你确认一次：万一手机上输入法开着、
+        字还没落进输入框，点它会把当前界面上的值再读一遍并写入。
       </div>
     </section>
 
@@ -1309,7 +1323,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.19';
+  var VERSION = '1.13.20';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -5571,6 +5585,61 @@ textarea{
     onEl('#c-lib-1', 'click', function () { openLib(1); });
     onEl('#c-lib-2', 'click', function () { openLib(2); });
   })();
+
+  /* =========================================================
+   * 保存按钮
+   *
+   * 配置本来就是"改动即存"（input/change/blur 都挂了 persist），这个按钮是**显式再存一次**：
+   * 手机上输入法还开着、最后一个字没落进输入框时，点一下会把界面上的当前值重读一遍，
+   * 顺带给出"确实存了"的确认。它不会做任何自动保存做不到的事，只是一个确定动作。
+   * ======================================================= */
+  function saveAll(pick) {
+    var n = 0;
+    if (pick !== 'voice') {
+      // 连接：地址 / 令牌 / 转发地址
+      var tg = $('#s-tts-target'); if (tg) { S.ttsTarget = String(tg.value || '').trim(); n++; }
+      var ky = $('#s-tts-key'); if (ky) { S.ttsKey = String(ky.value || '').trim(); n++; }
+      var px = $('#s-tts-proxy'); if (px) { S.ttsProxy = String(px.value || '').trim(); n++; }
+    }
+    if (pick !== 'conn') {
+      // 音色与合成参数
+      var v1 = $('#s-voice-1-input'); if (v1) { S.ttsVoice = String(v1.value || '').trim(); n++; }
+      var v2 = $('#s-voice-2-input'); if (v2) { S.ttsVoiceTease = String(v2.value || '').trim(); n++; }
+      var md = $('#s-tts-model'); if (md) { S.ttsModel = String(md.value || '').trim(); n++; }
+      var sp = $('#s-tts-speed');
+      if (sp) { S.ttsSpeed = clamp(parseFloat(sp.value) || 1, 0.5, 1.5); sp.value = S.ttsSpeed; n++; }
+    }
+    // 高级项（两个平台分组各有一个额外请求头框，值本来共用）
+    var mh = $('#s-tts-modelhdr'); if (mh) S.ttsModelHdr = String(mh.value || '').trim() || 'model';
+    var rf = $('#s-tts-reffield'); if (rf) S.ttsRefField = String(rf.value || '').trim() || 'reference_id';
+    var exA = $('#s-tts-extra'), exB = $('#s-tts-extra-oai');
+    var ex = (exA && exA.value) || (exB && exB.value) || '';
+    S.ttsExtraHdrs = String(ex).trim();
+
+    persist();
+    paintTransport();
+    paintPlatform();
+    paintVoice();
+    VOC.addLog('手动保存：已把界面上的值写回（' + n + ' 项）', 'ok');
+
+    // 存完了顺带说清"现在缺什么"，比只弹一句"已保存"有用
+    var miss = [];
+    if (!S.ttsTarget) miss.push('合成地址');
+    if (S.ttsTransport === 'direct') {
+      if (S.ttsAuth !== 'none' && !S.ttsKey) miss.push('令牌');
+    } else if (!S.ttsProxy) miss.push('转发地址');
+    var h = $('#vs-ping-hint');
+    if (miss.length) {
+      if (h) h.textContent = '已保存。还差：' + miss.join('、') + ' —— 补齐后才能出声。';
+      toast('已保存 · 还差 ' + miss.join('、'), 3200);
+    } else {
+      if (h) h.textContent = '已保存。要点「连通性检查」确认通道，然后就能试听了。';
+      toast('已保存 · 可以去点「连通性检查」', 2800);
+    }
+  }
+  /* 保存按钮的接线 */
+  onEl('#c-save-conn', 'click', function () { saveAll('conn'); });
+  onEl('#c-save-voice', 'click', function () { saveAll('voice'); });
 
   /* 第二个音色是可选功能：关掉时清空它，两个档位共用第一个音色 */
   function bindVoiceTwo() {
