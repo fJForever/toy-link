@@ -860,7 +860,7 @@ textarea{
   <main class="stage" id="v-voice" hidden>
     <section class="panel">
       <h3>语音状态<span class="tag" id="vs-tag"></span></h3>
-      <div class="hint" id="vs-line">—</div>
+      <div class="hint" id="vs-hint">—</div>
       <div class="chips">
         <button class="chip" id="s-voice">关</button>
         <button class="chip" id="c-voice-test">试听一句</button>
@@ -960,7 +960,7 @@ textarea{
         <button class="chip" id="c-voice-ping">连通性检查</button>
         <button class="chip" id="c-voice-ping2">两种方式都试一次</button>
       </div>
-      <div class="hint" id="s-conn-hint"></div>
+      <div class="hint" id="vs-ping-hint">检查会先发一句空文本试探通道 —— 不会产生合成费用。</div>
     </section>
 
     <section class="panel">
@@ -1025,12 +1025,15 @@ textarea{
     </section>
 
     <section class="panel">
-      <h3>试听与缓存</h3>
+      <h3>缓存</h3>
       <div class="chips" style="margin-top:0">
         <button class="chip" id="c-voice-warm">预热音集</button>
         <button class="chip" id="c-voice-clear">清空语音缓存</button>
       </div>
-      <div class="hint" id="vs-hint">语音目前是关的。打开「TTS 语音」需要先跑转发脚本并填合成地址。</div>
+      <div class="hint">
+        <b>预热音集</b>：按当前作用对象抓 5 句现成台词先合成好，之后播这些不再联网、不会卡。
+        <b>清空语音缓存</b>：删掉本地全部音频 —— 等同于「合成记录」那栏的清空，两者是同一份数据。
+      </div>
     </section>
 
     <section class="panel">
@@ -1039,6 +1042,7 @@ textarea{
         从<b>台词库</b>里挑一句来试音色 —— 换音色、改语速之后用它对比最省事，
         不用等装置跑起来。库里的句子都自动带情绪标记，念出来就是它本来的样子。
       </div>
+      <div class="hint act" id="vs-try-hint">试听与预热的反馈显示在这里。</div>
       <div class="field col">
         <div class="lb"><b>台词分类</b></div>
         <select class="txt" id="s-voice-kind" style="width:100%"></select>
@@ -1301,7 +1305,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.16';
+  var VERSION = '1.13.17';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2747,8 +2751,8 @@ textarea{
 
     /* ---- 合成：两种传输方式
      *
-     * relay（默认）走本机转发：面板不带令牌，由转发脚本补 Authorization。
-     * direct 直连中转：URL + 令牌都填在面板里，令牌跟着聊天变量走。
+     * relay 走本机转发：面板不带令牌，由转发脚本补 Authorization。只在直连被跨域拦下时用。
+     * direct 直连中转（默认）：URL + 令牌都填在面板里，令牌跟着聊天变量走。
      *   —— 少了本机脚本这一步，但令牌会随变量进聊天文件，也会明文落在页面上。
      *   中转自己开了跨域（Access-Control-Allow-Origin）时，直连才跑得通。
      *
@@ -5287,9 +5291,10 @@ textarea{
    * 语音设置页（VOC）
    *
    * 两种传输方式，令牌归属不同：
-   *   经本机转发（默认）→ 面板不带令牌，令牌在转发脚本那边，不进聊天记录
-   *   直连中转         → URL + 令牌都填在面板里，令牌随聊天变量存档
-   * 默认走前者，是因为后者会把密钥写进聊天文件和页面里。
+   *   直连中转（默认）  → URL + 令牌都填在面板里，令牌随聊天变量存档
+   *   经本机转发        → 面板不带令牌，令牌在转发脚本那边，不进聊天记录
+   * 默认直连是因为多数中转自己开了跨域、开箱即用；代价是令牌会进聊天文件，
+   * 所以界面上明确标了这一点，不想要的人可以切到转发。
    * ======================================================= */
   function paintVoice() {
     var btn = $('#s-voice');
@@ -5318,13 +5323,15 @@ textarea{
       vsTag.textContent = (S.voice === 'off') ? '未开'
         : (S.voice === 'buzz' ? '未测试' : (ready ? '已配置' : '待配置'));
     }
-    var vsLine = $('#vs-line');
-    if (vsLine) {
-      vsLine.innerHTML = '当前：<b style="color:var(--cyan)">' + (VOICE_LABEL[S.voice] || '关') + '</b>　'
+    /* 语音页的状态摘要与"下一步做什么"，写在该页第一块面板的提示行里。
+       检查结果与试听反馈各有各的位置（#vs-ping-hint / #vs-try-hint），不再互相覆盖。 */
+    var vsHint = $('#vs-hint');
+    if (vsHint) {
+      vsHint.innerHTML = '当前：<b style="color:var(--cyan)">' + (VOICE_LABEL[S.voice] || '关') + '</b>　'
         + (VOICE_NOTE[S.voice] || '')
         + (needTts && !ready
           ? '<br><b style="color:var(--amber)">还差：' + esc4(missText) + '（'
-            + (direct ? '直连' : '经本机转发') + '）</b>'
+            + (direct ? '直连' : '经本机转发') + '）—— 都在下面的「连接」里填。</b>'
           : '')
         + (needTts && ready && direct
           ? '<br><b style="color:var(--amber)">直连模式：令牌随聊天变量存档，注意环境。</b>'
@@ -5533,14 +5540,15 @@ textarea{
     }
     var ab = $('#s-tts-authstyle');
     if (ab) ab.textContent = AUTH_LABEL[S.ttsAuth] || 'Bearer';
-    var ch = $('#s-conn-hint');
-    if (ch) {
-      ch.innerHTML = direct
+    var h = $('#vs-ping-hint');
+    if (h) {
+      var base = direct
         ? '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
-          + '另外直连默认会被浏览器跨域拦下（Fish 官方与不少中转没开 CORS）——'
-          + '真被拦时错误里会写 Failed to fetch，那时切回经本机转发即可。'
+          + '另外直连会被浏览器跨域策略拦下，前提是中转自己开了跨域 ——'
+          + '真被拦时错误里会写 Failed to fetch，那时切「经本机转发」。'
         : '令牌不进聊天记录：它在转发脚本那边（<code>relay-key.txt</code>）。'
           + '面板里这一格留空也能用。';
+      h.innerHTML = base + '<br>检查会先发一句空文本试探通道 —— 不会产生合成费用。';
     }
   }
 
@@ -5582,10 +5590,10 @@ textarea{
     var kind = voiceKind();
     var list = [];
     for (var s = 1; s <= 5; s++) list.push(fillName(libPick(kind, s)));
-    var h = $('#voice-hint');
+    var h = $('#vs-try-hint');
     if (h) h.textContent = '正在预热 ' + list.length + ' 条…';
     VOC.warm(list).then(function (n) {
-      if (h) { h.textContent = '预热完成：' + n + ' 条已缓存，之后播这些不再联网。'; h.dataset.done = '1'; }
+      if (h) h.textContent = '预热完成：' + n + ' 条已缓存，之后播这些不再联网。';
       toast('音集预热完成：' + n + ' 条');
     });
   }
@@ -5746,7 +5754,7 @@ textarea{
      跨域被拦 / 鉴权失败 / 路由不存在 / 只是参数不合法（那说明前两关都过了）。
      两种传输方式都走这一条，只是打出去的地址不同。 */
   function voicePing() {
-    var h = $('#vs-hint');
+    var h = $('#vs-ping-hint');
     function say(msg, cls) {
       if (h) h.textContent = msg;
       VOC.addLog('[检查] ' + msg, cls || (/连不上|拦下|失败|不对|404|401|403|超时|没填/.test(msg) ? 'err'
@@ -5832,7 +5840,7 @@ textarea{
      （多半是直连被跨域拦）。只探不通，不改用户当前选的传输方式。 */
   function voicePingBoth() {
     var keep = S.ttsTransport;
-    var h = $('#vs-hint');
+    var h = $('#vs-ping-hint');
     if (h) h.textContent = '先测直连…';
     VOC.addLog('=== 对比检查：先直连中转 ===', 'hi');
     S.ttsTransport = 'direct';
@@ -5860,11 +5868,10 @@ textarea{
     if (VOC.voiceOn()) {
       if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
       var pick = voiceFor('', S.stage);
-      var h = $('#vs-hint');
+      var h = $('#vs-try-hint');
       if (h) {
         h.textContent = '测试台词：' + pick.text + '（'
           + (pick.kind === 'tease' ? '调教对白' : (pick.kind === 'self' ? '自己玩 · 气音' : '呻吟')) + '）';
-        h.dataset.done = '1';
       }
       VOC.say(pick.text, { vol: S.voiceVol / 100, voice: pick.voice });
     } else {
