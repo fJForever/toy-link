@@ -666,6 +666,19 @@ input[type=range]::-moz-range-thumb{
 }
 .txt::placeholder{color:var(--dim-2);opacity:1}
 .txt:focus{border-color:var(--hot-a55)}
+/* 下拉框：不写这一组的话，浏览器会用系统默认（黑字）铺在深色面板上，直接看不见。
+   option 也要显式给色 —— 部分安卓浏览器的下拉列表不继承 select 的样式。 */
+select.txt,select{
+  color:var(--text);
+  background-color:rgba(0,0,0,.55);
+  color-scheme:dark;
+}
+select option{
+  color:var(--text);
+  background-color:#241a26;
+}
+select option:disabled{color:var(--dim-2)}
+select:disabled{opacity:.55}
 /* 令牌框：按密码输入，右侧一个「显示」可以临时看明文（粘贴时确认有没有截断） */
 .txt-wrap{position:relative;width:100%}
 .txt-wrap .txt{padding-right:52px}
@@ -948,8 +961,24 @@ textarea{
     <section class="panel">
       <h3>音色与合成参数</h3>
       <div class="field col">
-        <div class="lb"><b>角色音色</b><small>整个角色的声音都用它 —— 呻吟、调教对白、自己玩的气音都是同一个人，不需要分开配。</small></div>
-        <input class="txt" id="s-tts-voice" type="text" placeholder="reference_id" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+        <div class="lb"><b>你拿着遥控器时的音色</b><small>被作用的是 TA，出的是呻吟。可以直接选下面两个现成的，也可以改成你自己的。</small></div>
+        <div class="row2">
+          <select class="txt" id="s-voice-1" style="flex:1;min-width:0"></select>
+          <button class="mini" id="c-voice-1-own">自定义</button>
+        </div>
+        <input class="txt" id="s-voice-1-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" style="width:100%;margin-top:7px;display:none">
+      </div>
+      <div class="field">
+        <div class="lb"><b>TA 拿着遥控器时用另一个音色</b><small>开着才能选下面那个。同一个角色一般不需要，除非你想让"操控的语气"听起来是另一个人。</small></div>
+        <div class="sw" id="s-voice-two"><i></i></div>
+      </div>
+      <div class="field col" id="s-voice-2-box" style="display:none">
+        <div class="lb"><b>TA 拿着遥控器时的音色</b><small>被作用的是你，TA 出的是调教对白。</small></div>
+        <div class="row2">
+          <select class="txt" id="s-voice-2" style="flex:1;min-width:0"></select>
+          <button class="mini" id="c-voice-2-own">自定义</button>
+        </div>
+        <input class="txt" id="s-voice-2-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" style="width:100%;margin-top:7px;display:none">
       </div>
       <div class="field">
         <div class="lb"><b>模型</b><small>按中转支持的模型名填。</small></div>
@@ -1246,7 +1275,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.13';
+  var VERSION = '1.13.14';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2322,7 +2351,8 @@ textarea{
     ttsTransport: 'direct',
     ttsKey: '',          // 直连模式才用；经转发时留空，令牌在转发脚本那边
     ttsTarget: '',       // 中转的合成地址
-    ttsVoice: '',        // 角色音色 id（中转侧）—— 呻吟与调教共用同一个，不再分两套
+    ttsVoice: '',        // 你拿着遥控器时的音色（被作用的是 TA，出呻吟）
+    ttsVoiceTease: '',   // TA 拿着遥控器时的音色（出调教对白）。留空 = 与上面共用同一个
     ttsModel: 's2.1-pro-free',
     ttsFormat: 'mp3',
     ttsSpeed: 1,
@@ -3220,8 +3250,10 @@ textarea{
      force='beg' 时走请求停止那一支。 */
   function voiceFor(voiceLine, stage, force) {
     var kind = (force === 'beg') ? 'beg' : voiceKind();
-    // 音色只有一套：呻吟和调教是同一个角色的同一个人，分开配反而会串味
-    var voice = S.ttsVoice;
+    /* 两套音色是可选的：
+       默认共用同一个（同一个人不同处境下的声音）；
+       填了「TA 拿着遥控器时的音色」就分开用 —— 那时 ta 是操控方，口气与呻吟本来就不同。 */
+    var voice = (kind === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice;
     var out = { text: '', kind: kind, voice: voice };
 
     // 1) AI 这一轮明写的台词：有引号/情绪标记/拟声起头就当台词用（这正是它该干的事）
@@ -4545,7 +4577,8 @@ textarea{
       if (S.ttsTransport === 'direct' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('直连模式还要填令牌'); return; }
       // 没写情绪标记也让它能跑：自动补一个，不然短文本会念成朗读腔
       var line = hasMark(txt) ? txt : (voiceMark(voiceKind(), S.stage) + ' ' + txt);
-      VOC.say(line, { vol: S.voiceVol / 100, voice: S.ttsVoice });
+      var ck = voiceKind();
+      VOC.say(line, { vol: S.voiceVol / 100, voice: (ck === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice });
       VOC.addLog('自定义试听：' + line.slice(0, 40), 'hi');
       toast('试听：' + line.slice(0, 24), 2200);
     });
@@ -5280,6 +5313,105 @@ textarea{
   var AUTH_LABEL = { bearer: 'Bearer', raw: '裸 Authorization', 'x-api-key': 'x-api-key', none: '不带' };
   var AUTH_ORDER = ['bearer', 'raw', 'x-api-key', 'none'];
 
+  /* 现成音色 + 自定义。value 就是中转侧的音色 ID，中间不要加空格。 */
+  var VOICE_PRESETS = [
+    { label: '奶狗弟弟', value: '34c96cabe34d44d2bea354ba7a6bc0eb' },
+    { label: '年轻姐姐', value: '73647cd4ff7c477cb787d5fd8068f3e8' }
+  ];
+  var VOICE_CUSTOM = { label: '自定义…', value: '' };
+
+  /* 把某个槽位（1 = 你拿着遥控器，2 = TA 拿着遥控器）的下拉填好并同步状态。
+     值不是预设之一就切到「自定义…」并把输入框亮出来，不擅自改用户存的 ID。 */
+  function fillVoiceSelect(n) {
+    var sel = $('#s-voice-' + n), inp = $('#s-voice-' + n + '-input');
+    var val = (n === 1 ? S.ttsVoice : S.ttsVoiceTease) || '';
+    if (!sel) return;
+    if (!sel.options.length) {
+      VOICE_PRESETS.forEach(function (p) {
+        var o = document.createElement('option');
+        o.value = p.value;
+        o.textContent = p.label;
+        sel.appendChild(o);
+      });
+      var oc = document.createElement('option');
+      oc.value = VOICE_CUSTOM.value;
+      oc.textContent = VOICE_CUSTOM.label;
+      sel.appendChild(oc);
+    }
+    if (val && VOICE_PRESETS.some(function (p) { return p.value === val; })) {
+      sel.value = val;
+      if (inp) inp.style.display = 'none';
+    } else {
+      sel.value = '';
+      if (inp) {
+        inp.style.display = '';
+        if (val) inp.value = val;
+      }
+    }
+  }
+
+  /* 音色槽位的接线。用户选的 ID 要原样保存，前后空格顺手去掉（复制时常带）。 */
+  function bindVoiceSlot(n, key) {
+    var sel = $('#s-voice-' + n), inp = $('#s-voice-' + n + '-input');
+    if (sel) {
+      sel.addEventListener('change', function () {
+        if (this.value) {
+          S[key] = this.value;
+          if (inp) inp.style.display = 'none';
+        } else {
+          if (inp) { inp.style.display = ''; inp.focus(); }
+          if (!inp || !inp.value.trim()) S[key] = '';
+        }
+        paintVoice(); persist();
+        toast('音色已切到：' + (this.value ? this.options[this.selectedIndex].textContent : '自定义'));
+      });
+    }
+    if (inp) {
+      var apply = function () {
+        S[key] = String(inp.value || '').trim();
+        persist();
+        paintVoice();
+      };
+      inp.addEventListener('input', apply);
+      inp.addEventListener('change', apply);
+      inp.addEventListener('blur', apply);
+    }
+    var ob = $('#c-voice-' + n + '-own');
+    if (ob) {
+      ob.addEventListener('click', function () {
+        if (sel) sel.value = '';
+        if (inp) { inp.style.display = ''; inp.focus(); }
+      });
+    }
+  }
+
+  /* 第二个音色是可选功能：关掉时清空它，两个档位共用第一个音色 */
+  function bindVoiceTwo() {
+    var sw = $('#s-voice-two');
+    var box = $('#s-voice-2-box');
+    var on = !!S.ttsVoiceTease;
+    if (sw) sw.classList.toggle('on', on);
+    if (box) box.style.display = on ? 'block' : 'none';
+    if (sw) {
+      sw.addEventListener('click', function () {
+        var next = !sw.classList.contains('on');
+        sw.classList.toggle('on', next);
+        if (box) box.style.display = next ? 'block' : 'none';
+        if (!next) {
+          S.ttsVoiceTease = '';
+          var inp = $('#s-voice-2-input');
+          if (inp) inp.value = '';
+          fillVoiceSelect(2);
+        }
+        persist();
+        toast(next ? 'TA 拿着遥控器时用单独的音色' : '两个档位共用同一个音色');
+      });
+    }
+  }
+  bindVoiceSlot(1, 'ttsVoice');
+  bindVoiceSlot(2, 'ttsVoiceTease');
+  bindVoiceTwo();
+
   function paintTransport() {
     var direct = (S.ttsTransport === 'direct');
     var b = $('#s-transport');
@@ -5312,7 +5444,12 @@ textarea{
   function bindVoice() {
     var v = $('#s-voice'); if (v) v.textContent = VOICE_LABEL[S.voice] || '关';
     var m = $('#s-tts-model'); if (m) m.value = S.ttsModel || '';
-    var vc = $('#s-tts-voice'); if (vc) vc.value = S.ttsVoice || '';
+    fillVoiceSelect(1);
+    fillVoiceSelect(2);
+    var vt2 = $('#s-voice-two');
+    if (vt2) vt2.classList.toggle('on', !!S.ttsVoiceTease);
+    var v2b = $('#s-voice-2-box');
+    if (v2b) v2b.style.display = S.ttsVoiceTease ? 'block' : 'none';
     var tg = $('#s-tts-target'); if (tg) tg.value = S.ttsTarget || '';
     var px = $('#s-tts-proxy'); if (px) px.value = S.ttsProxy || '';
     var ky = $('#s-tts-key'); if (ky) ky.value = S.ttsKey || '';
@@ -5491,7 +5628,7 @@ textarea{
     if (VOC.voiceOn()) {
       if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
       if (S.ttsTransport === 'direct' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('直连模式还要填令牌'); return; }
-      var v = S.ttsVoice;
+      var v = (cur.kind === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice;
       VOC.say(line, { vol: S.voiceVol / 100, voice: v });
       toast('试听：' + line.slice(0, 24));
     } else {
@@ -5828,7 +5965,7 @@ textarea{
   bindText('#s-tts-target', 'ttsTarget');
   bindText('#s-tts-proxy', 'ttsProxy');
   bindText('#s-tts-key', 'ttsKey');
-  bindText('#s-tts-voice', 'ttsVoice');
+  // 音色不走 bindText：它由下拉 + 自定义输入框两个控件共同管，逻辑在 bindVoiceSlot 里
   bindText('#s-tts-model', 'ttsModel');
   bindText('#s-tts-modelhdr', 'ttsModelHdr');
   bindText('#s-tts-reffield', 'ttsRefField');
