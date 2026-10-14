@@ -916,25 +916,42 @@ textarea{
             不同中转对"模型放哪个头、音色字段叫什么"的要求不一样。遇到说不清原因的
             400 / 422，先来这里对一遍 —— 这几项保持默认就是标准协议。
           </div>
-          <div class="field col">
-            <div class="lb"><b>额外请求头</b><small>JSON，例如 <code>{"X-Token":"xxx"}</code>。中转要求带自定义头时填这儿。</small></div>
-            <input class="txt" id="s-tts-extra" type="text" placeholder='留空即可' autocomplete="off" spellcheck="false" style="width:100%">
+          <div id="s-adv-fish">
+            <div class="field col">
+              <div class="lb"><b>额外请求头</b><small>JSON，例如 <code>{"X-Token":"xxx"}</code>。中转要求带自定义头时填这儿。</small></div>
+              <input class="txt" id="s-tts-extra" type="text" placeholder='留空即可' autocomplete="off" spellcheck="false" style="width:100%">
+            </div>
+            <div class="field">
+              <div class="lb"><b>模型头名</b><small>标准是 <code>model</code>。</small></div>
+              <input class="txt" id="s-tts-modelhdr" type="text" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field">
+              <div class="lb"><b>音色字段名</b><small>标准是 <code>reference_id</code>。</small></div>
+              <input class="txt" id="s-tts-reffield" type="text" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field">
+              <div class="lb"><b>延迟档（latency）</b><small>low 最快、normal 质量最好但慢。</small></div>
+              <button class="mini" id="s-tts-latency">low</button>
+            </div>
+            <div class="field">
+              <div class="lb"><b>不发 model 头</b><small>中转不认这个头时打开。</small></div>
+              <div class="sw" id="s-tts-nomodel"><i></i></div>
+            </div>
           </div>
-          <div class="field">
-            <div class="lb"><b>模型头名</b><small>标准是 <code>model</code>。</small></div>
-            <input class="txt" id="s-tts-modelhdr" type="text" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="field">
-            <div class="lb"><b>音色字段名</b><small>标准是 <code>reference_id</code>。</small></div>
-            <input class="txt" id="s-tts-reffield" type="text" autocomplete="off" spellcheck="false">
-          </div>
-          <div class="field">
-            <div class="lb"><b>延迟档（latency）</b><small>low 最快、normal 质量最好但慢。</small></div>
-            <button class="mini" id="s-tts-latency">low</button>
-          </div>
-          <div class="field">
-            <div class="lb"><b>不发 model 头</b><small>中转不认这个头时打开。</small></div>
-            <div class="sw" id="s-tts-nomodel"><i></i></div>
+
+          <div id="s-adv-openai" style="display:none">
+            <div class="field col">
+              <div class="lb"><b>额外请求头</b><small>JSON。中转要求带自定义头时填这儿。</small></div>
+              <input class="txt" id="s-tts-extra-oai" type="text" placeholder='留空即可' autocomplete="off" spellcheck="false" style="width:100%">
+            </div>
+            <div class="field">
+              <div class="lb"><b>加语气指令（instructions）</b><small>只有较新的 OpenAI 语音模型吃这个字段。打开后会让它按"气声、喘息"来念 —— 成本相同，但对这种台词更贴。</small></div>
+              <div class="sw" id="s-tts-langboost"><i></i></div>
+            </div>
+            <div class="hint">
+              模型名与语速在上面「音色与合成参数」那一栏里。这套协议没有 latency / reference_id 这些字段，
+              所以切到 OpenAI 时那几项会自动收起来。
+            </div>
           </div>
         </div>
       </details>
@@ -961,8 +978,22 @@ textarea{
     <section class="panel">
       <h3>音色与合成参数</h3>
       <div class="field col">
-        <div class="lb"><b>你拿着遥控器时的音色</b><small>被作用的是 TA，出的是呻吟。填你所用平台上的音色 ID。</small></div>
-        <input class="txt" id="s-voice-1-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+        <div class="lb"><b>合成平台</b><small id="s-plat-note"></small></div>
+        <div class="row2">
+          <select class="txt" id="s-platform" style="flex:1;min-width:0">
+            <option value="fish">Fish Audio（主推）</option>
+            <option value="openai">OpenAI 兼容</option>
+            <option value="custom">其他 / 自定义协议</option>
+          </select>
+          <button class="mini" id="c-open-lib">音色库</button>
+        </div>
+      </div>
+      <div class="field col">
+        <div class="lb"><b>你拿着遥控器时的音色</b><small id="s-voice1-note">被作用的是 TA，出的是呻吟。</small></div>
+        <div class="row2">
+          <input class="txt" id="s-voice-1-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="flex:1;min-width:0">
+          <button class="mini" id="c-lib-1">从这里找</button>
+        </div>
       </div>
       <div class="field">
         <div class="lb"><b>TA 拿着遥控器时用另一个音色</b><small>开着才能填下面那个。同一个角色一般不需要，除非你想让"操控的语气"听起来是另一个人。</small></div>
@@ -970,7 +1001,10 @@ textarea{
       </div>
       <div class="field col" id="s-voice-2-box" style="display:none">
         <div class="lb"><b>TA 拿着遥控器时的音色</b><small>被作用的是你，TA 出的是调教对白。</small></div>
-        <input class="txt" id="s-voice-2-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+        <div class="row2">
+          <input class="txt" id="s-voice-2-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="flex:1;min-width:0">
+          <button class="mini" id="c-lib-2">从这里找</button>
+        </div>
       </div>
       <div class="field">
         <div class="lb"><b>模型</b><small>按中转支持的模型名填。</small></div>
@@ -1267,7 +1301,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.15';
+  var VERSION = '1.13.16';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2350,6 +2384,12 @@ textarea{
     ttsSpeed: 1,
     ttsAuth: 'bearer',
     ttsTimeout: 25000,
+    /* 合成平台：决定请求长什么样（字段名、鉴权、响应形态）。
+       只收"返回音频二进制"的平台 —— 返回 JSON 包 base64 的（如 MiniMax、Gemini）需要额外的解码层，
+       没有实测环境就不假装支持，见「合成平台」那一栏的说明。 */
+    ttsPlatform: 'fish',   // fish | openai | custom
+    ttsLangBoost: false,   // OpenAI：加 instruction 参数（要求它"喘、气声"）—— 成本相同但更贴
+
     /* 高级：请求头与字段名
        不同中转对"模型放哪个头、音色字段叫什么"的要求不一样，缺一项就整条打不通。
        默认值与标准 Fish 协议一致，装了不改也能用。 */
@@ -2725,6 +2765,7 @@ textarea{
         h['x-toylink-target'] = c.target || '';
         if (c.model) h['x-toylink-model'] = c.model;
         if (c.modelHdr && c.modelHdr !== 'model') h['x-toylink-modelheader'] = c.modelHdr;
+        // 平台级别的"不发 model 头"也要传过去，否则转发脚本会自作主张带上
         if (c.noModelHdr) h['x-toylink-noheaders'] = '1';
         if (c.authstyle && c.authstyle !== 'bearer') h['x-toylink-auth'] = c.authstyle;
       }
@@ -2743,6 +2784,7 @@ textarea{
     }
 
     function cfgNow() {
+      var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
       return {
         transport: S.ttsTransport || 'relay',
         target: S.ttsTarget || '',
@@ -2751,11 +2793,21 @@ textarea{
         authstyle: S.ttsAuth || 'bearer',
         model: S.ttsModel || '',
         modelHdr: S.ttsModelHdr || 'model',
-        refField: S.ttsRefField || 'reference_id',
-        noModelHdr: !!S.ttsNoModelHdr,
+        /* 音色字段名与音色字段是否发 model，都随平台走：
+           Fish 用 reference_id + model 头；OpenAI 用 voice 字段、不要 model 头。 */
+        voiceField: (S.ttsPlatform === 'custom') ? (S.ttsRefField || 'reference_id') : p.voiceField,
+        noModelHdr: (S.ttsPlatform === 'openai') ? true : !!S.ttsNoModelHdr,
         extraRaw: S.ttsExtraHdrs || '',
-        latency: S.ttsLatency || 'low'
+        latency: S.ttsLatency || 'low',
+        format: S.ttsFormat || 'mp3',
+        speed: S.ttsSpeed || 1,
+        langBoost: !!S.ttsLangBoost,
+        plat: S.ttsPlatform || 'fish'
       };
+    }
+    function buildReqBody(c, text, vv) {
+      var p = PLATFORMS[c.plat] || PLATFORMS.fish;
+      return p.req(c, text, vv);
     }
 
     function synth(text, voice) {
@@ -2779,14 +2831,8 @@ textarea{
           return { cached: true, id: k, blob: hit.blob };
         }
         vlog('缓存未命中，开始联网合成…', 'step');
-        var body = {
-          text: text, format: S.ttsFormat, sample_rate: 44100, normalize: true,
-          latency: c.latency, temperature: 0.7, top_p: 0.7,
-          chunk_length: 300, min_chunk_length: 50,
-          prosody: { speed: S.ttsSpeed, volume: 0, normalize_loudness: true }
-        };
-        if (vv) body[c.refField] = vv;
-        if (S.ttsFormat === 'mp3') body.mp3_bitrate = 128;
+        // 请求体按平台生成：Fish 用 reference_id + 一堆调参，OpenAI 用 input + voice，两者字段名都不一样
+        var body = buildReqBody(c, text, vv);
 
         var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         var timer = ctl ? setTimeout(function () { ctl.abort(); }, S.ttsTimeout) : null;
@@ -5306,8 +5352,7 @@ textarea{
   var AUTH_ORDER = ['bearer', 'raw', 'x-api-key', 'none'];
 
   /* 音色槽位（1 = 你拿着遥控器，2 = TA 拿着遥控器）。
-     这里不预置任何具体音色 ID —— 音色是各平台自己的，写死一个等于给别的平台埋一个必然失败的默认值。
-     用户填的 ID 原样保存，只在两侧去空白（复制时容易带上）。 */
+     这里不预置任何具体音色 ID —— 音色是各平台自己的，写死一个等于给别的平台埋一个必然失败的默认值。 */
   function fillVoiceSelect(n) {
     var inp = $('#s-voice-' + n + '-input');
     if (!inp) return;
@@ -5327,6 +5372,121 @@ textarea{
     inp.addEventListener('change', apply);
     inp.addEventListener('blur', apply);
   }
+
+  /* =========================================================
+   * 合成平台：决定请求长什么样
+   *
+   * 只列"直接返回音频二进制"的平台 —— 这一类可以走同一条链路，换个请求体与字段名即可。
+   * MiniMax / Gemini 返回的是 JSON 包 base64 音频（MiniMax 在 data.audio，还带 hex 的 status），
+   * 需要额外的解码层，没有实测环境就不列进来装作支持。
+   * ======================================================= */
+  var PLATFORMS = {
+    fish: {
+      name: 'Fish Audio',
+      lib: 'https://fish.audio/app/',
+      libHint: '进页面后打开音色库（Voice），点进某个音色复制它的 ID',
+      voiceField: 'reference_id',
+      voiceHint: '在 Fish 音色库页面复制 model id（32 位十六进制）',
+      note: '主推：情绪标记（<code>[panting]</code> <code>[气声]</code>）完整支持，'
+        + '音色库与本站同一套协议。<br>音色 ID 在音色库页面点进某个音色后复制。',
+      req: function (c, text, vv) {
+        var b = {
+          text: text, format: c.format, sample_rate: 44100, normalize: true,
+          latency: c.latency, temperature: 0.7, top_p: 0.7,
+          chunk_length: 300, min_chunk_length: 50,
+          prosody: { speed: c.speed, volume: 0, normalize_loudness: true }
+        };
+        if (vv) b[c.voiceField] = vv;
+        if (c.format === 'mp3') b.mp3_bitrate = 128;
+        return b;
+      }
+    },
+    openai: {
+      name: 'OpenAI 兼容',
+      lib: 'https://platform.openai.com/docs/guides/text-to-speech',
+      libHint: '音色是固定名字，文档里列了全部；中转可能另有自己的名字',
+      voiceField: 'voice',
+      voiceHint: '填官方音色名（alloy / ash / coral / nova / onyx / sage / shimmer …），或中转提供的名字',
+      note: '走 <code>/v1/audio/speech</code>。音色是固定名字，不是十六进制 ID。'
+        + '<br><b>注意：这套协议不认识情绪标记</b> —— 念出来会有点平，适合先试通路。',
+      req: function (c, text, vv) {
+        var b = { model: c.model || 'tts-1', input: text, response_format: 'mp3', speed: c.speed };
+        if (vv) b.voice = vv;
+        // instructions 是较新模型才有的字段，默认不发；打开开关才带
+        if (c.langBoost) b.instructions = '用气声、喘息与不稳定的语气念，像是在极力忍耐；不要平铺直叙。';
+        return b;
+      }
+    },
+    custom: {
+      name: '其他 / 自定义协议',
+      lib: 'https://fish.audio/app/',
+      libHint: '没有固定入口，按你平台的文档找',
+      voiceField: 'reference_id',
+      voiceHint: '音色 ID',
+      note: '自己填字段名与额外请求头去凑。'
+        + '<b>只适用于返回音频二进制的接口</b>；返回 JSON 包 base64 的协议当前接不了。',
+      req: function (c, text, vv) {
+        var b = {
+          text: text, format: c.format, sample_rate: 44100, normalize: true,
+          latency: c.latency, temperature: 0.7, top_p: 0.7,
+          chunk_length: 300, min_chunk_length: 50,
+          prosody: { speed: c.speed, volume: 0, normalize_loudness: true }
+        };
+        if (vv) b[c.voiceField] = vv;
+        if (c.format === 'mp3') b.mp3_bitrate = 128;
+        return b;
+      }
+    }
+  };
+
+  function paintPlatform() {
+    var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
+    var sel = $('#s-platform');
+    if (sel && sel.value !== S.ttsPlatform) sel.value = S.ttsPlatform;
+    var note = $('#s-plat-note');
+    if (note) note.innerHTML = '<b>' + esc4(p.name) + '</b>　' + p.note;
+    var n1 = $('#s-voice1-note');
+    if (n1) n1.textContent = '被作用的是 TA，出的是呻吟。' + p.voiceHint;
+    var i1 = $('#s-voice-1-input');
+    if (i1) i1.placeholder = p.voiceHint;
+    var i2 = $('#s-voice-2-input');
+    if (i2) i2.placeholder = p.voiceHint;
+    var lb = $('#s-tts-langboost');
+    if (lb) lb.classList.toggle('on', !!S.ttsLangBoost);
+    // 高级区按平台显隐：Fish 那套字段对 OpenAI 不适用，混在一起会让人以为要全填
+    var forOpenai = (S.ttsPlatform === 'openai');
+    var gFish = $('#s-adv-fish'), gOai = $('#s-adv-openai');
+    if (gFish) gFish.style.display = forOpenai ? 'none' : 'block';
+    if (gOai) gOai.style.display = forOpenai ? 'block' : 'none';
+  }
+
+  /* 音色库链接：不同平台入口不一样，给个按钮直接过去找，省得"我去哪拿 ID" */
+  function openLib(which) {
+    var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
+    var url = p.lib || '';
+    if (!url) { toast('这个平台没有固定的音色库页面'); return; }
+    var slot = (which === 2) ? 'TA 拿着遥控器时' : '你拿着遥控器时';
+    VOC.addLog('打开音色库（' + p.name + '）→ ' + url, 'hi');
+    toast('去音色库找 ID，找到填到「' + slot + '的音色」里', 3600);
+    try { window.open(url, '_blank', 'noopener'); }
+    catch (e) { toast('没能打开新窗口，地址：' + url, 4000); }
+  }
+
+  (function bindPlatform() {
+    var sel = $('#s-platform');
+    if (sel) {
+      sel.addEventListener('change', function () {
+        S.ttsPlatform = this.value;
+        paintPlatform();
+        persist();
+        var p = PLATFORMS[S.ttsPlatform];
+        toast('合成平台：' + p.name);
+      });
+    }
+    onEl('#c-open-lib', 'click', function () { openLib(1); });
+    onEl('#c-lib-1', 'click', function () { openLib(1); });
+    onEl('#c-lib-2', 'click', function () { openLib(2); });
+  })();
 
   /* 第二个音色是可选功能：关掉时清空它，两个档位共用第一个音色 */
   function bindVoiceTwo() {
@@ -5408,6 +5568,7 @@ textarea{
     var swa = $('#s-voiceauto'); if (swa) swa.classList.toggle('on', S.voiceAuto);
     var sww = $('#s-voicewarm'); if (sww) sww.classList.toggle('on', S.voiceWarm);
     paintTransport();
+    paintPlatform();
     paintVoice();
   }
 
@@ -5912,7 +6073,33 @@ textarea{
   bindText('#s-tts-model', 'ttsModel');
   bindText('#s-tts-modelhdr', 'ttsModelHdr');
   bindText('#s-tts-reffield', 'ttsRefField');
+  /* 额外请求头在两个平台各有输入框，存的是同一个值 —— 谁改了同步给另一个，免得切平台后看着像丢了 */
   bindText('#s-tts-extra', 'ttsExtraHdrs');
+  (function () {
+    var box = $('#s-tts-extra-oai');
+    if (!box) return;
+    var apply = function () {
+      S.ttsExtraHdrs = String(box.value || '').trim();
+      var other = $('#s-tts-extra');
+      if (other && other.value !== box.value) other.value = box.value;
+      persist();
+    };
+    box.addEventListener('input', apply);
+    box.addEventListener('change', apply);
+    box.addEventListener('blur', apply);
+  })();
+  // OpenAI 的 instructions 开关
+  (function () {
+    var el = $('#s-tts-langboost');
+    if (!el) return;
+    el.classList.toggle('on', !!S.ttsLangBoost);
+    el.addEventListener('click', function () {
+      S.ttsLangBoost = !S.ttsLangBoost;
+      el.classList.toggle('on', S.ttsLangBoost);
+      persist();
+      toast(S.ttsLangBoost ? '会一起发语气指令（需要较新的语音模型）' : '不发语气指令');
+    });
+  })();
   bindText('#s-tts-speed', 'ttsSpeed', true);
   bindText('#s-voicevol', 'voiceVol', true);
 
@@ -6227,6 +6414,8 @@ textarea{
       toy_cfg_nomodel: S.ttsNoModelHdr,
       toy_cfg_extra: S.ttsExtraHdrs,
       toy_cfg_latency: S.ttsLatency,
+      toy_cfg_platform: S.ttsPlatform,
+      toy_cfg_langboost: S.ttsLangBoost,
       toy_cfg_target_url: S.ttsTarget,
       toy_cfg_ttsvoice: S.ttsVoice,
       toy_cfg_ttsmodel: S.ttsModel,
@@ -6282,6 +6471,8 @@ textarea{
     if (typeof v.toy_cfg_nomodel === 'boolean') S.ttsNoModelHdr = v.toy_cfg_nomodel;
     if (typeof v.toy_cfg_extra === 'string') S.ttsExtraHdrs = v.toy_cfg_extra;
     if (['low', 'balanced', 'normal'].indexOf(v.toy_cfg_latency) >= 0) S.ttsLatency = v.toy_cfg_latency;
+    if (['fish', 'openai', 'custom'].indexOf(v.toy_cfg_platform) >= 0) S.ttsPlatform = v.toy_cfg_platform;
+    if (typeof v.toy_cfg_langboost === 'boolean') S.ttsLangBoost = v.toy_cfg_langboost;
     if (typeof v.toy_cfg_target_url === 'string') S.ttsTarget = v.toy_cfg_target_url;
     if (typeof v.toy_cfg_ttsvoice === 'string') S.ttsVoice = v.toy_cfg_ttsvoice;
     // 旧存档里的 toy_cfg_ttsvoicet（调教音色）已废弃：音色合并成一套，读到了也不采用
