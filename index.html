@@ -1065,15 +1065,19 @@ textarea{
     <section class="panel">
       <h3>自定义试听<span class="tag" id="vs-custom-tag"></span></h3>
       <div class="hint" style="margin-top:0;margin-bottom:10px">
-        自己写一段送去合成，用来试音色、试语速最直接。开头先放一个<b>语气符号</b>（方括号），
-        后面的字才会按那个语气念出来。
+        自己写一段送去合成，用来试音色、试语速最直接。<b>可以写多行</b>，每行开头放一个
+        <b>语气符号</b>（方括号），那一行才会按那个语气念出来；哪行忘写会自动补一个。
       </div>
-      <textarea id="s-custom-text" spellcheck="false" style="min-height:64px;margin-top:0"
-        placeholder="[panting] 哈啊……不、不行……">[panting] 哈啊……不、不行……</textarea>
+      <textarea id="s-custom-text" spellcheck="false" style="min-height:86px;margin-top:0"
+        placeholder="[soft tone][whispering] 你怎么还没睡呀？
+[inhale] 我只是……有点想你了。
+[short pause][chuckling] 好啦，别笑我。">[soft tone][whispering] 你怎么还没睡呀？
+[inhale] 我只是……有点想你了。
+[short pause][chuckling] 好啦，别笑我。</textarea>
       <div class="row2" style="margin-top:9px">
         <button class="chip" id="c-custom-say">试听这段</button>
         <button class="chip" id="c-custom-clear">清空</button>
-        <button class="chip" id="c-custom-len">0 字</button>
+        <button class="chip" id="c-custom-len">0 字 · 0 行</button>
       </div>
 
       <div class="tagsec">
@@ -1305,7 +1309,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.18';
+  var VERSION = '1.13.19';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2825,9 +2829,15 @@ textarea{
       }
       var url = c.endpoint;
       var vv = voice || S.ttsVoice;
+      /* 多行台词原样送去合成（模型会按行/句切分），但每行的情绪标记要去掉 ——
+         标记是给我们看的、也是给模型的提示，念出来会变成噪音。 */
+      var speak = String(text || '').split(/[\r\n]+/).map(function (l) {
+        return l.replace(/\[[^\]]*\]\s*/g, '').trim();
+      }).filter(Boolean).join('，');
+      if (!speak) speak = String(text || '').replace(/\[[^\]]*\]\s*/g, '').trim();
       var k = vkey(text, vv);
       var t0 = Date.now();
-      vlog('请求 ' + esc4(String(text).slice(0, 34)) + ' · ' + nBytes(text) + ' 字节 · '
+      vlog('请求 ' + esc4(String(text).slice(0, 34)) + ' · ' + nBytes(speak) + ' 字节 · '
         + (c.transport === 'direct' ? '直连' : '经转发') + (vv ? ' · 音色 ' + vv : ' · 默认音色'), 'hi');
       return cached(k).then(function (hit) {
         if (hit && hit.blob) {
@@ -2836,7 +2846,7 @@ textarea{
         }
         vlog('缓存未命中，开始联网合成…', 'step');
         // 请求体按平台生成：Fish 用 reference_id + 一堆调参，OpenAI 用 input + voice，两者字段名都不一样
-        var body = buildReqBody(c, text, vv);
+        var body = buildReqBody(c, speak, vv);
 
         var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
         var timer = ctl ? setTimeout(function () { ctl.abort(); }, S.ttsTimeout) : null;
@@ -2853,6 +2863,8 @@ textarea{
         vlog('  → ' + c.transport.toUpperCase() + ' ' + url, 'step');
         vlog('  → 鉴权头：' + authHdr + ' ｜ 其余头：' + (hdrNames || '无'), 'step');
         vlog('  → 请求体字段：' + Object.keys(body).join(', ') + '（' + nBytes(JSON.stringify(body)) + ' 字节）', 'step');
+        var lines = String(text || '').split(/[\r\n]+/).filter(function (x) { return x.trim(); });
+        if (lines.length > 1) vlog('  → 多行台词 ' + lines.length + ' 行，合成时并成一句（去掉标记）', 'step');
 
         return fetch(url, {
           method: 'POST', headers: h, body: JSON.stringify(body),
@@ -3310,16 +3322,32 @@ textarea{
   }
 
   /* 判断一段文本"是不是台词"：带情绪标记、引号，或者以拟声词起头的短句。
-     目的是拦住"低下头，呼吸乱了一拍。"这类叙述 —— 它们不该被念出来。 */
+     目的是拦住"低下头，呼吸乱了一拍。"这类叙述 —— 它们不该被念出来。
+     多行台词（要求 2-3 行、每行各带标记）逐行判定：至少半数行像台词就算。 */
   function voiceish(s) {
+    var str = String(s || '').trim();
+    if (!str) return false;
+    if (str.indexOf('\n') >= 0) {
+      var ls = str.split(/[\r\n]+/).filter(function (x) { return x.trim(); });
+      if (!ls.length) return false;
+      var good = ls.filter(function (x) { return lineIsVoice(x); }).length;
+      return good >= Math.ceil(ls.length / 2);
+    }
+    return lineIsVoice(str);
+  }
+  /* 单行判定。长度上限放宽到 80：多行台词的每一行可能较长，
+     真正的护栏是"必须带标记或引号"。 */
+  function lineIsVoice(s) {
     s = String(s || '').trim();
     if (!s) return false;
     if (hasMark(s)) return true;                                  // [panting] 哈啊……
     if (/^[「『"'“]/.test(s) || /[」』"'”]$/.test(s)) return true;  // 带引号的对白
-    if (s.length > 20) return false;                              // 太长的一律不是台词
+    if (s.replace(/\[[^\]]*\]\s*/g, '').length > 80) return false; // 太长且没标记，一律不是台词
     return /^[啊嗯唔哈呀哦诶咿嘻哼乖手别求慢不要]/.test(s)
       || /[……——]{1,}/.test(s) && !/[，。]{1}[^…—]/.test(s);
   }
+  /* 标记数量（多行时逐行统计），用于"标记太密"的提醒 */
+  function markCount(s) { return (String(s || '').match(/\[[^\]]+\]/g) || []).length; }
 
   /* =========================================================
    * 5. 渲染
@@ -4166,17 +4194,20 @@ textarea{
       '· 说明用一句短话写清这次想干什么、想看到什么样的反应。',
       '· 心声写 ' + cn + ' 此刻心里真正的想法，不是嘴上说的话，一句话、25 字以内。'
         + '面板上只显示这一句，所以它要能独立看懂。',
-      '· 语音填 ' + cn + ' 这一轮**说出口**的话。**每一轮都必须填，不能留空** —— 这一行会被直接念成声音。',
-      '· 语音的写法：**开头先放情绪标记，再写台词**。标记用方括号，可以写英文固定标记（' +
-        '[panting] [gasping] [sobbing] [moaning] [whispering] [soft tone] [nervous] [pleased]）' +
-        '，也可以写中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；一句最多叠 3 个。',
-      '· 台词本身 **12-18 字最合适，最多 20 字**，用省略号和破折号断句。',
-      '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、' +
-        '压在喉咙里的碎音。',
-      '· 语音里**不要写动作、不要写旁白、不要用括号包住叙述** ——' +
-        '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里，不要放进语音。',
-      '· 正确例子：[panting] 哈啊……不要……　／　[confident][低调] 乖，坐好。　／　' +
-        '[gasping][气声] 不、不行……',
+      '· 语音填 ' + cn + ' 这一轮**说出口**的话。**每一轮都必须填，不能留空** —— 它会被直接念成声音。',
+      '· 语音要写成 **2 到 3 行**，每行都是一句能念出来的话，**每行开头都要带情绪标记**。',
+      '· 每行 **12-24 字**，用省略号、破折号和问号断开 —— 短句念得顺，长了会变成朗读。',
+      '· 标记用方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] '
+        + '[nervous] [pleased] [chuckling] [sighing]）或中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；'
+        + '一行最多叠 3 个。',
+      '· 三行之间要有推进：从**试探**到**说透**，最后一句可以是**退让、打岔或撒娇**收尾。',
+      '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、'
+        + '压在喉咙里的碎音。**不要写动作、不要写旁白、不要用括号包住叙述** ——'
+        + '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里。',
+      '· 正确例子（照这个格式写：三行，每行开头都是方括号标记）：',
+      '　[soft tone][whispering] 你怎么还没睡呀？',
+      '　[inhale] 我只是……有点想你了。',
+      '　[short pause][chuckling] 好啦，别笑我。',
       '· 这一行是给装置读的，正文里绝对不要提到它，也不要解释这是什么。'
     ];
 
@@ -4351,21 +4382,31 @@ textarea{
   // ---- 离线演示 ----
   // 每一组 = 说明文字 + 对应台词。演示模式也要"正文一轮、声音一轮"，
   // 不然看不出语音长什么样。说明是叙述，台词是能念出来的话，两者不混。
+  // 台词照正式格式写：2-3 行，每行开口一个情绪标记。
   var FAKE = {
     low: [
-      { n: '轻轻吸了口气，膝盖不自觉地并了并。', v: '[气声] 嗯……' },
-      { n: '攥住手边的布料，声音里带出一点黏。', v: '[soft tone] 唔……别、别这样……' },
-      { n: '低下头，呼吸乱了一拍。', v: '[panting] 哈啊……等一下……' }
+      { n: '轻轻吸了口气，膝盖不自觉地并了并。',
+        v: '[气声] 嗯……\n[soft tone] 你怎么突然……\n[chuckling] 没事，你继续。' },
+      { n: '攥住手边的布料，声音里带出一点黏。',
+        v: '[whispering] 唔……别、别这样……\n[soft tone] 有人会看见的……\n[sighing] 算了，当我没说。' },
+      { n: '低下头，呼吸乱了一拍。',
+        v: '[panting] 哈啊……等一下……\n[inhale] 我缓一缓就好。\n[soft tone] 你、你别过来。' }
     ],
     mid: [
-      { n: '整个人抖了一下，指尖掐进掌心，喉咙里漏出一声没压住的轻哼。', v: '[panting] 不、不行……' },
-      { n: '试着稳住呼吸，可腰已经自己塌了下去。', v: '[gasping] 啊——嗯……不要……' },
-      { n: '声音开始发飘，一句话断成三截。', v: '[panting][气声] 慢、慢一点……' }
+      { n: '整个人抖了一下，指尖掐进掌心，喉咙里漏出一声没压住的轻哼。',
+        v: '[panting] 不、不行……\n[gasping] 你手别动……\n[sobbing] 我真的会叫出来的。' },
+      { n: '试着稳住呼吸，可腰已经自己塌了下去。',
+        v: '[gasping] 啊——嗯……不要……\n[panting][气声] 慢、慢一点……\n[whispering] 求你，别看我的脸。' },
+      { n: '声音开始发飘，一句话断成三截。',
+        v: '[panting][气声] 我说不……说不完整了……\n[groaning] 唔……你满意了？\n[chuckling] 别、别笑……' }
     ],
     high: [
-      { n: '再也说不出完整的句子，只剩下贴着牙齿的呜咽。', v: '[sobbing][gasping] 不要了……求你……' },
-      { n: '弓起背，指节泛白，一声比一声更哑。', v: '[gasping][颤抖] 不行……我真的不行……' },
-      { n: '意识被搅成一团白光，只能本能地追着那点节奏。', v: '[sobbing] 啊……啊——' }
+      { n: '再也说不出完整的句子，只剩下贴着牙齿的呜咽。',
+        v: '[sobbing][gasping] 不要了……求你……\n[crying loudly] 我真的受不了了……\n[whispering] 抱一下我……就一下。' },
+      { n: '弓起背，指节泛白，一声比一声更哑。',
+        v: '[gasping][颤抖] 不行……我真的不行……\n[groaning] 唔……嗓子哑了……\n[sighing] 随你吧……' },
+      { n: '意识被搅成一团白光，只能本能地追着那点节奏。',
+        v: '[sobbing] 啊……啊——\n[panting] 哈啊……哈啊……\n[whispering] 我什么都不知道了……' }
     ]
   };
   function fakeReact() {
@@ -4480,20 +4521,38 @@ textarea{
     rec.root.appendChild(wrap);
   }
 
-  /* 演示模式下的假重写：按方向里的关键词挑一句，看得出"改过"就行。
+  /* 演示模式下的假重写：按方向里的关键词拼三行，看得出"改过"就行。
      只服务于没接酒馆时的离线演示，真环境永远走 BRIDGE.genRaw。 */
   function mockRewriteLine(dir) {
     var d = String(dir || '');
-    if (/慢|拖|缓|拉长/.test(d)) return '[soft tone][气声] 慢、慢一点……再慢一点……';
-    if (/快|急|紧凑|加快/.test(d)) return '[panting] 哈啊……哈啊……太、太快了……';
-    if (/多|长|再说|多一点/.test(d)) return '[panting] 不、不行……你听我说……真的不行了……';
-    if (/少|短|简洁|安静/.test(d)) return '[gasping] ……嗯。';
-    if (/沙哑|哑|低/.test(d)) return '[groaning] 唔……嗓子……哑了……';
-    if (/哭|泪|委屈/.test(d)) return '[sobbing] 呜……别、别这样……求你……';
-    if (/硬|傲|嘴硬|命令|凶/.test(d)) return '[confident] 别出声。撑住，看着我。';
-    if (/求|软|服软/.test(d)) return '[nervous][气声] 求你……我真的不行了……';
-    if (/喘|气/.test(d)) return '[panting] 哈啊……哈……哈啊……哈……';
-    return '[panting] 嗯……不、不行……你等一下……';
+    if (/慢|拖|缓|拉长/.test(d)) {
+      return '[soft tone][whispering] 慢一点……别急……\n[panting] 你、你听我说……\n[short pause] 我真的……快撑不住了。';
+    }
+    if (/快|急|紧凑|加快/.test(d)) {
+      return '[panting] 哈啊……哈啊……太快了……\n[gasping] 不、不行，你慢一点……\n[sobbing] 我快不行了……';
+    }
+    if (/多|长|再说|多一点/.test(d)) {
+      return '[soft tone] 你想听我说话吗？\n[panting] 那……那你先让我喘口气。\n[chuckling] 好啦，我说就是了……';
+    }
+    if (/少|短|简洁|安静/.test(d)) {
+      return '[gasping] ……嗯。\n[soft tone] 别说话。';
+    }
+    if (/沙哑|哑|低/.test(d)) {
+      return '[groaning] 唔……嗓子哑了……\n[whispering] 你、你听得清吗……\n[sighing] 算了，别管我。';
+    }
+    if (/哭|泪|委屈/.test(d)) {
+      return '[sobbing] 呜……你别这样……\n[crying loudly] 我真的受不了了……\n[whispering] 抱一会儿……就一会儿。';
+    }
+    if (/硬|傲|嘴硬|命令|凶/.test(d)) {
+      return '[confident] 别出声。撑住。\n[soft tone] 看着我。\n[chuckling] 这就不行了？';
+    }
+    if (/求|软|服软/.test(d)) {
+      return '[nervous][气声] 求你……我真的不行了……\n[panting] 你就饶了我吧……\n[soft tone] 我什么都答应你。';
+    }
+    if (/喘|气/.test(d)) {
+      return '[panting] 哈啊……哈……\n[gasping] 哈啊……哈啊……\n[sighing] 呼……总算缓过来了。';
+    }
+    return '[soft tone][whispering] 你怎么还没睡呀？\n[inhale] 我只是……有点想你了。\n[short pause][chuckling] 好啦，别笑我。';
   }
 
   /* =========================================================
@@ -4590,10 +4649,12 @@ textarea{
     function paintLen() {
       var box = $('#c-custom-len');
       if (!box || !ta) return;
-      var n = String(ta.value || '').length;   // 中文按字符数就够用，不折腾码点
-      box.textContent = n + ' 字';
+      var v = String(ta.value || '');
+      var n = v.replace(/\[[^\]]*\]\s*/g, '').length;      // 提示"要念几个字"，标记不算
+      var lines = v.split(/[\r\n]+/).filter(function (x) { return x.trim(); }).length;
+      box.textContent = n + ' 字 · ' + lines + ' 行';
       var tag = $('#vs-custom-tag');
-      if (tag) tag.textContent = n > 60 ? '偏长' : (n ? '' : '空');
+      if (tag) tag.textContent = !lines ? '空' : (n > 200 ? '偏长' : (lines > 4 ? '行数偏多' : ''));
       box.classList.toggle('on', n > 0);
     }
     if (ta) {
@@ -4611,18 +4672,23 @@ textarea{
       if (!ta) return;
       var txt = String(ta.value || '').trim();
       if (!txt) { toast('先写一段话'); return; }
-      if (txt.length > 80 && !confirm('这段有 ' + txt.length + ' 字，合成会明显变慢（首字延迟长）。继续吗？')) return;
+      var bareLen = txt.replace(/\[[^\]]*\]\s*/g, '').length;
+      if (bareLen > 200 && !confirm('这段去掉标记有 ' + bareLen + ' 字，合成会明显变慢（首字延迟长）。继续吗？')) return;
       VOC.resume();
       if (VOC.buzzMode() && S.on) VOC.tick(S.env);
       if (!VOC.voiceOn()) { toast('语音开关还没开（要在 TTS 语音或两个都要）'); return; }
       if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
       if (S.ttsTransport === 'direct' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('直连模式还要填令牌'); return; }
-      // 没写情绪标记也让它能跑：自动补一个，不然短文本会念成朗读腔
-      var line = hasMark(txt) ? txt : (voiceMark(voiceKind(), S.stage) + ' ' + txt);
+      /* 多行时逐行补标记 —— 用户可能只给第一行写了标记，其余行空着；
+         每行各自带标记，念出来的语气才会跟着走。 */
       var ck = voiceKind();
+      var line = txt.split(/[\r\n]+/).filter(function (x) { return x.trim(); }).map(function (x) {
+        return hasMark(x) ? x.trim() : (voiceMark(ck, S.stage) + ' ' + x.trim());
+      }).join('\n');
+      var nl = line.split('\n').length;
       VOC.say(line, { vol: S.voiceVol / 100, voice: (ck === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice });
-      VOC.addLog('自定义试听：' + line.slice(0, 40), 'hi');
-      toast('试听：' + line.slice(0, 24), 2200);
+      VOC.addLog('自定义试听：' + line.replace(/[\r\n]+/g, ' ／ ').slice(0, 60), 'hi');
+      toast('试听：' + nl + ' 行', 2200);
     });
   }
 
@@ -4691,12 +4757,19 @@ textarea{
       '修改要求：' + dir,
       '',
       '硬性要求：',
-      '· 开头先放情绪标记，方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] ' +
-        '[soft tone] [nervous] [confident]）或中文描述（[气声] [颤抖] [黏腻]），最多叠 3 个。',
-      '· 台词 12-18 字最合适，最多 20 字，用省略号和破折号断句。',
-      '· 只写能念出来的话（拟声、短命令、压在喉咙里的碎音），不要写动作、不要写旁白。'
+      '· 写成 **2 到 3 行**，每行一句台词，**每行开头都要带方括号情绪标记**。',
+      '· 每行 **12-24 字**，用省略号、破折号和问号断开。',
+      '· 标记可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] [nervous] '
+        + '[chuckling] [sighing]）或中文描述（[气声] [颤抖] [黏腻]）；一行最多叠 3 个。',
+      '· 三行之间要有推进：从试探到说透，最后一句可以退让、打岔或撒娇收尾。',
+      '· 只写能念出来的话（拟声、短命令、压在喉咙里的碎音），不要写动作、不要写旁白。',
+      '',
+      '格式示例（三行，每行都以标记开头）：',
+      '　[soft tone][whispering] 你怎么还没睡呀？',
+      '　[inhale] 我只是……有点想你了。',
+      '　[short pause][chuckling] 好啦，别笑我。'
     ];
-    var warn = voiceish(cur) ? '' : '\n· 注意：原句看起来像旁白而不是台词，改写后必须变成能直接念出来的一句话。';
+    var warn = voiceish(cur) ? '' : '\n· 注意：原句看起来像旁白而不是台词，改写后必须变成能直接念出来的话。';
     return L.join('\n') + warn;
   }
 
@@ -4706,11 +4779,13 @@ textarea{
       .replace(/<[^>]{1,40}>/g, ' ')                       // 各种标签
       .replace(/```[\s\S]*?```/g, ' ')
       .replace(/^[\s"'「『]+|[\s"'」』]+$/g, '')            // 首尾引号
-      .replace(/[\r\n]+/g, ' ')                            // 压成一行
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    var bare = t.replace(/\[[^\]]*\]\s*/g, '').trim();
-    return { line: t, bare: bare };
+      // 保留换行 —— 结论是"2-3 行、每行带标记"，压成一行就把结构毁了
+      .split(/[\r\n]+/)
+      .map(function (l) { return l.replace(/^[\s"'「『]+|[\s"'」』]+$/g, '').replace(/\s{2,}/g, ' ').trim(); })
+      .filter(function (l) { return l; })
+      .join('\n');
+    var bare = t.replace(/\[[^\]]*\]\s*/g, '').replace(/[\r\n]+/g, ' ').trim();
+    return { line: t, bare: bare, lines: t ? t.split('\n').length : 0 };
   }
 
   function rewriteVoice(dir) {
@@ -4745,12 +4820,14 @@ textarea{
         toast('重写失败：空结果');
         return;
       }
-      // 太长就截到第一个句末；带了叙述腔就退一层，别把旁白念出来
-      if (o.bare.length > 26) {
-        var cut = line.search(/[。！？!?]/);
-        if (cut > 4 && cut < 40) line = line.slice(0, cut + 1);
+      /* 收紧尺度随多行放宽：单行上限约 40 字、整段约 120 字。
+         原来的 26 字是给单行台词定的，多行台词照那个卡会把结果削掉大半。 */
+      var linesArr = line.split('\n');
+      if (o.bare.length > 120) {
+        line = linesArr.slice(0, 3).join('\n');
+        o = tidyLine(line);
       }
-      if (!voiceish(line) && o.bare.length > 30) {
+      if (!voiceish(line) && o.bare.length > 60) {
         if (tg) tg.innerHTML = '模型这次写成了旁白，没采用 —— 换个说法再试一次';
         toast('这次写成旁白，没采用');
         return;
