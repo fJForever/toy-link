@@ -71,7 +71,9 @@ const RULES = [
   // 振动与音频走酒馆页面，绕开 iframe 的权限策略
   ["('vibrate' in navigator)", "('vibrate' in NAV)"],
   ['navigator.vibrate(', 'NAV.vibrate('],
-  ['window.AudioContext || window.webkitAudioContext', 'WIN.AudioContext || WIN.webkitAudioContext']
+  ['window.AudioContext || window.webkitAudioContext', 'WIN.AudioContext || WIN.webkitAudioContext'],
+  // 首开全屏判断：脚本 iframe 是隐藏的，window.innerWidth 是 0，桌面也会被判成全屏 —— 用酒馆页面的视口
+  ["fitSaved === null ? (window.innerWidth < 860)", "fitSaved === null ? (viewport().w < 860)"]
 ];
 
 RULES.forEach(function (r) {
@@ -86,7 +88,8 @@ const MUST = [
   ['ONDOC(\'visibilitychange\'', 'visibilitychange 替换'],
   ["'vibrate' in NAV", '振动能力检测替换'],
   ['NAV.vibrate(0)', '振动停止调用替换'],
-  ['var S = TK_S = {', '装置状态交给悬浮球']
+  ['var S = TK_S = {', '装置状态交给悬浮球'],
+  ['fitSaved === null ? (viewport().w < 860)', '首开全屏判断用酒馆页面宽度']
 ];
 MUST.forEach(function (m) {
   if (js.indexOf(m[0]) === -1) throw new Error('改写失败（' + m[1] + '）：找不到 "' + m[0] + '"');
@@ -587,9 +590,15 @@ const body = [
   '  if (DOC !== document && DOCS.indexOf(DOC) < 0) DOCS.push(DOC);',
   '  function eachWin(fn) { for (var i = 0; i < WINS.length; i++) { try { fn(WINS[i]); } catch (e) { /* noop */ } } }',
   '  function eachDoc(fn) { for (var i = 0; i < DOCS.length; i++) { try { fn(DOCS[i]); } catch (e) { /* noop */ } } }',
-  '  function ONWIN(t, f, o) { eachWin(function (w) { w.addEventListener(t, f, o); }); }',
+  '  var FOREIGN = [];   // 挂在酒馆页面（不是本 iframe）上的监听：本 iframe 重载时它们不会自己消失，stop() 里逐个摘掉',
+  '  function track(tg, t, f, o) { if (tg !== window && tg !== document) FOREIGN.push([tg, t, f, o]); }',
+  '  function ONWIN(t, f, o) { eachWin(function (w) { w.addEventListener(t, f, o); track(w, t, f, o); }); }',
   '  function OFFWIN(t, f, o) { eachWin(function (w) { w.removeEventListener(t, f, o); }); }',
-  '  function ONDOC(t, f, o) { eachDoc(function (d) { d.addEventListener(t, f, o); }); }',
+  '  function ONDOC(t, f, o) { eachDoc(function (d) { d.addEventListener(t, f, o); track(d, t, f, o); }); }',
+  '  function OFFALL() {',
+  '    for (var i = 0; i < FOREIGN.length; i++) { try { FOREIGN[i][0].removeEventListener(FOREIGN[i][1], FOREIGN[i][2], FOREIGN[i][3]); } catch (e) { /* noop */ } }',
+  '    FOREIGN = [];',
+  '  }',
   '  function MOUNT(el) {',
   '    try { DOC.body.appendChild(el); } catch (e) { document.body.appendChild(el); }',
   '  }',
@@ -643,6 +652,7 @@ const body = [
   '  function open() { opened = true; apply(); setTimeout(layout, 0); }',
   '  function collapse() { opened = false; apply(); }',
   '  function toggle() { opened = !opened; apply(); if (opened) setTimeout(layout, 0); }',
+  '  host.style.display = "none";   // 先藏起来：完整的 apply() 要到启动最后才跑，坏版本会先满屏亮 2.5 秒',
   '  var closeBtn = root.querySelector("#btn-close");   // 注意用 root：ROOT 这个名字要到下面才赋值',
   '  if (closeBtn) {',
   '    closeBtn.style.display = "grid";',
@@ -767,6 +777,7 @@ const body = [
   '      shellEl.style.width = vp.w + "px";',
   '      shellEl.style.height = vp.h + "px";',
   '      shellEl.style.maxHeight = "none";',
+  '      shellEl.style.minHeight = "0px";',
   '      shellEl.style.borderRadius = "0px";',
   '      shellEl.style.border = "0";',
   '      shellEl.style.boxShadow = "none";',
@@ -776,6 +787,7 @@ const body = [
   '      shellEl.style.width = w + "px";',
   '      shellEl.style.height = h + "px";',
   '      shellEl.style.maxHeight = h + "px";',
+  '      shellEl.style.minHeight = "0px";   // 样式表里 #shell{min-height:100vh} 会压过上面的高度：手机上窗口模式底栏整排跑出屏幕',
   '      shellEl.style.borderRadius = "20px";',
   '      shellEl.style.border = "1px solid rgba(232,214,236,.10)";',
   '      shellEl.style.boxShadow = "0 24px 70px rgba(0,0,0,.72)";',
@@ -883,6 +895,7 @@ const body = [
   '    stop: function () {',
   '      try { if (NAV.vibrate) NAV.vibrate(0); } catch (e) { /* noop */ }',
   '      try { tkDispose(); } catch (e) { /* noop */ }',
+  '      try { OFFALL(); } catch (e) { /* noop */ }',
   '      var h = BYID("' + HOST_ID + '"); if (h) h.remove();',
   '      var b = BYID("' + BALL_ID + '"); if (b) b.remove();',
   '      window.__TOYLINK__ = null;',

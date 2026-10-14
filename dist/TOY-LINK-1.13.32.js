@@ -194,6 +194,12 @@ function TOYLINK_BOOT() {
           fetchText(url, 15000).then(function (code) {
             // 宁可停在当前版本，也不把半截内容写进用户的脚本库
             if (!code || code.length < 50000) throw new Error('内容异常 ' + (code ? code.length : 0) + ' 字符');
+            /* 只看长度不够：运营商劫持页、门户登录页也能有 50KB，写进去脚本就永久变砖（连自更新都跑不了）。
+               必须认得出是本体、版本号对得上，并且能编译。 */
+            if (code.indexOf('function TOYLINK_BOOT') === -1 || code.indexOf("var VERSION = '" + remote + "'") === -1) {
+              throw new Error('取到的不是 v' + remote + ' 本体');
+            }
+            try { new Function(code); } catch (e) { throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e)); }
             writeBackSelf(code, function (ok, where) {
               if (ok) {
                 console.log('[TOY·LINK] 已写入脚本库（' + where + '），刷新页面生效');
@@ -202,7 +208,7 @@ function TOYLINK_BOOT() {
                 console.log('[TOY·LINK] 写回失败：' + where);
               }
             });
-          }, function (e) {
+          }).catch(function (e) {   // 用 catch 而不是 then 的第二个参数：上面成功回调里抛的错也要接住、换下一个源
             console.log('[TOY·LINK] 源失败 ' + url + '：' + ((e && e.message) || e));
             tryNext();
           });
@@ -271,9 +277,15 @@ function TOYLINK_BOOT() {
   if (DOC !== document && DOCS.indexOf(DOC) < 0) DOCS.push(DOC);
   function eachWin(fn) { for (var i = 0; i < WINS.length; i++) { try { fn(WINS[i]); } catch (e) { /* noop */ } } }
   function eachDoc(fn) { for (var i = 0; i < DOCS.length; i++) { try { fn(DOCS[i]); } catch (e) { /* noop */ } } }
-  function ONWIN(t, f, o) { eachWin(function (w) { w.addEventListener(t, f, o); }); }
+  var FOREIGN = [];   // 挂在酒馆页面（不是本 iframe）上的监听：本 iframe 重载时它们不会自己消失，stop() 里逐个摘掉
+  function track(tg, t, f, o) { if (tg !== window && tg !== document) FOREIGN.push([tg, t, f, o]); }
+  function ONWIN(t, f, o) { eachWin(function (w) { w.addEventListener(t, f, o); track(w, t, f, o); }); }
   function OFFWIN(t, f, o) { eachWin(function (w) { w.removeEventListener(t, f, o); }); }
-  function ONDOC(t, f, o) { eachDoc(function (d) { d.addEventListener(t, f, o); }); }
+  function ONDOC(t, f, o) { eachDoc(function (d) { d.addEventListener(t, f, o); track(d, t, f, o); }); }
+  function OFFALL() {
+    for (var i = 0; i < FOREIGN.length; i++) { try { FOREIGN[i][0].removeEventListener(FOREIGN[i][1], FOREIGN[i][2], FOREIGN[i][3]); } catch (e) { /* noop */ } }
+    FOREIGN = [];
+  }
   function MOUNT(el) {
     try { DOC.body.appendChild(el); } catch (e) { document.body.appendChild(el); }
   }
@@ -327,6 +339,7 @@ function TOYLINK_BOOT() {
   function open() { opened = true; apply(); setTimeout(layout, 0); }
   function collapse() { opened = false; apply(); }
   function toggle() { opened = !opened; apply(); if (opened) setTimeout(layout, 0); }
+  host.style.display = "none";   // 先藏起来：完整的 apply() 要到启动最后才跑，坏版本会先满屏亮 2.5 秒
   var closeBtn = root.querySelector("#btn-close");   // 注意用 root：ROOT 这个名字要到下面才赋值
   if (closeBtn) {
     closeBtn.style.display = "grid";
@@ -2458,6 +2471,12 @@ function TOYLINK_BOOT() {
       bzOn: function () { return bzOn; },
       voiceOn: voiceOn, buzzMode: bzMode,
       stopAll: function () { bzStop(); if (cur) { try { cur.pause(); } catch (e) { /* noop */ } } },
+      // 实例卸载时关掉音频上下文：它是用酒馆页面的构造器建的，iframe 重载后不会自己消失
+      close: function () {
+        try { bzStop(); } catch (e) { /* noop */ }
+        if (cur) { try { cur.pause(); } catch (e) { /* noop */ } }
+        if (ctx) { try { ctx.close(); } catch (e) { /* noop */ } ctx = null; }
+      },
       // 日志：面板内部记一份，外面的连通性检查等也往里写
       addLog: vlog,
       repaintLog: renderLog,
@@ -6960,7 +6979,7 @@ function TOYLINK_BOOT() {
     var fitOn = false;
     try {
       var fitSaved = localStorage.getItem(FIT_KEY);
-      fitOn = fitSaved === null ? (window.innerWidth < 860) : fitSaved === '1';
+      fitOn = fitSaved === null ? (viewport().w < 860) : fitSaved === '1';   // 构建版把这里换成酒馆页面的宽度
     } catch (e) { /* noop */ }
     applyFit(fitOn);
     // 顶栏 ⤢ 和设置页的「全屏」开关是同一个动作。手机上顶栏可能被系统状态栏盖住（2026-10-12 玩家反馈：
@@ -7007,7 +7026,12 @@ function TOYLINK_BOOT() {
         AUD.update(0, hz());
       }
     });
-    ONWIN('pagehide', function () { HAP.kill(); });
+    ONWIN('pagehide', function () {
+      HAP.kill();
+      // 切聊天会重载脚本 iframe；两个 AudioContext 建在酒馆页面上，不关就一直挂在那里
+      try { if (AUD.ctx) { AUD.ctx.close(); AUD.ctx = null; } } catch (e) { /* noop */ }
+      try { VOC.close(); } catch (e) { /* noop */ }
+    });
 
     render();
     wakeLoop();
@@ -7212,6 +7236,12 @@ function TOYLINK_BOOT() {
         fetchText(url, 15000).then(function (code) {
           // 宁可停在当前版本，也不把半截内容写进用户的脚本库
           if (!code || code.length < 50000) throw new Error('内容异常 ' + (code ? code.length : 0) + ' 字符');
+          /* 只看长度不够：运营商劫持页、门户登录页也能有 50KB，写进去脚本就永久变砖（连自更新都跑不了）。
+             必须认得出是本体、版本号对得上，并且能编译。 */
+          if (code.indexOf('function TOYLINK_BOOT') === -1 || code.indexOf("var VERSION = '" + remote + "'") === -1) {
+            throw new Error('取到的不是 v' + remote + ' 本体');
+          }
+          try { new Function(code); } catch (e) { throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e)); }
           writeBackSelf(code, function (ok, where) {
             if (ok) {
               console.log('[TOY·LINK] 已写入脚本库（' + where + '），刷新页面生效');
@@ -7220,7 +7250,7 @@ function TOYLINK_BOOT() {
               console.log('[TOY·LINK] 写回失败：' + where);
             }
           });
-        }, function (e) {
+        }).catch(function (e) {   // 用 catch 而不是 then 的第二个参数：上面成功回调里抛的错也要接住、换下一个源
           console.log('[TOY·LINK] 源失败 ' + url + '：' + ((e && e.message) || e));
           tryNext();
         });
@@ -7307,6 +7337,7 @@ function TOYLINK_BOOT() {
       shellEl.style.width = vp.w + "px";
       shellEl.style.height = vp.h + "px";
       shellEl.style.maxHeight = "none";
+      shellEl.style.minHeight = "0px";
       shellEl.style.borderRadius = "0px";
       shellEl.style.border = "0";
       shellEl.style.boxShadow = "none";
@@ -7316,6 +7347,7 @@ function TOYLINK_BOOT() {
       shellEl.style.width = w + "px";
       shellEl.style.height = h + "px";
       shellEl.style.maxHeight = h + "px";
+      shellEl.style.minHeight = "0px";   // 样式表里 #shell{min-height:100vh} 会压过上面的高度：手机上窗口模式底栏整排跑出屏幕
       shellEl.style.borderRadius = "20px";
       shellEl.style.border = "1px solid rgba(232,214,236,.10)";
       shellEl.style.boxShadow = "0 24px 70px rgba(0,0,0,.72)";
@@ -7423,6 +7455,7 @@ function TOYLINK_BOOT() {
     stop: function () {
       try { if (NAV.vibrate) NAV.vibrate(0); } catch (e) { /* noop */ }
       try { tkDispose(); } catch (e) { /* noop */ }
+      try { OFFALL(); } catch (e) { /* noop */ }
       var h = BYID("__toylink_host__"); if (h) h.remove();
       var b = BYID("__toylink_ball__"); if (b) b.remove();
       window.__TOYLINK__ = null;

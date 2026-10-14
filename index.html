@@ -3211,6 +3211,12 @@ textarea{
       bzOn: function () { return bzOn; },
       voiceOn: voiceOn, buzzMode: bzMode,
       stopAll: function () { bzStop(); if (cur) { try { cur.pause(); } catch (e) { /* noop */ } } },
+      // 实例卸载时关掉音频上下文：它是用酒馆页面的构造器建的，iframe 重载后不会自己消失
+      close: function () {
+        try { bzStop(); } catch (e) { /* noop */ }
+        if (cur) { try { cur.pause(); } catch (e) { /* noop */ } }
+        if (ctx) { try { ctx.close(); } catch (e) { /* noop */ } ctx = null; }
+      },
       // 日志：面板内部记一份，外面的连通性检查等也往里写
       addLog: vlog,
       repaintLog: renderLog,
@@ -7713,7 +7719,7 @@ textarea{
     var fitOn = false;
     try {
       var fitSaved = localStorage.getItem(FIT_KEY);
-      fitOn = fitSaved === null ? (window.innerWidth < 860) : fitSaved === '1';
+      fitOn = fitSaved === null ? (window.innerWidth < 860) : fitSaved === '1';   // 构建版把这里换成酒馆页面的宽度
     } catch (e) { /* noop */ }
     applyFit(fitOn);
     // 顶栏 ⤢ 和设置页的「全屏」开关是同一个动作。手机上顶栏可能被系统状态栏盖住（2026-10-12 玩家反馈：
@@ -7760,7 +7766,12 @@ textarea{
         AUD.update(0, hz());
       }
     });
-    window.addEventListener('pagehide', function () { HAP.kill(); });
+    window.addEventListener('pagehide', function () {
+      HAP.kill();
+      // 切聊天会重载脚本 iframe；两个 AudioContext 建在酒馆页面上，不关就一直挂在那里
+      try { if (AUD.ctx) { AUD.ctx.close(); AUD.ctx = null; } } catch (e) { /* noop */ }
+      try { VOC.close(); } catch (e) { /* noop */ }
+    });
 
     render();
     wakeLoop();
@@ -7965,6 +7976,12 @@ textarea{
         fetchText(url, 15000).then(function (code) {
           // 宁可停在当前版本，也不把半截内容写进用户的脚本库
           if (!code || code.length < 50000) throw new Error('内容异常 ' + (code ? code.length : 0) + ' 字符');
+          /* 只看长度不够：运营商劫持页、门户登录页也能有 50KB，写进去脚本就永久变砖（连自更新都跑不了）。
+             必须认得出是本体、版本号对得上，并且能编译。 */
+          if (code.indexOf('function TOYLINK_BOOT') === -1 || code.indexOf("var VERSION = '" + remote + "'") === -1) {
+            throw new Error('取到的不是 v' + remote + ' 本体');
+          }
+          try { new Function(code); } catch (e) { throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e)); }
           writeBackSelf(code, function (ok, where) {
             if (ok) {
               console.log('[TOY·LINK] 已写入脚本库（' + where + '），刷新页面生效');
@@ -7973,7 +7990,7 @@ textarea{
               console.log('[TOY·LINK] 写回失败：' + where);
             }
           });
-        }, function (e) {
+        }).catch(function (e) {   // 用 catch 而不是 then 的第二个参数：上面成功回调里抛的错也要接住、换下一个源
           console.log('[TOY·LINK] 源失败 ' + url + '：' + ((e && e.message) || e));
           tryNext();
         });
