@@ -710,6 +710,20 @@ input[type=range]::-moz-range-thumb{
   border:1px solid var(--line);background:var(--card);color:var(--dim);
 }
 .mini:active{transform:scale(.96)}
+
+/* ---------- 音色簿下拉（保存过的音色）----------
+   和音色 ID 输入框同一行：左边填 ID，右边直接挑一个存过的。
+   保存前整块不存在，不留一个空下拉框占地方。 */
+.voicebook{display:flex;gap:8px;margin-top:8px;align-items:center}
+.voicebook[hidden]{display:none}
+.voicebook select{
+  flex:1;min-width:0;padding:8px 10px;border-radius:10px;font-size:12.5px;
+  color:var(--text);background-color:rgba(0,0,0,.55);color-scheme:dark;
+  border:1px solid var(--line);-webkit-appearance:none;appearance:none;
+}
+.voicebook select option{color:var(--text);background-color:#241a26}
+.voicebook .mini{padding:7px 10px;font-size:11.5px}
+.voicebook .mini.danger{color:var(--hot-2);border-color:var(--hot-a35)}
 .num{
   width:64px;padding:8px 10px;border-radius:10px;text-align:center;font-size:13px;
   border:1px solid var(--line);background:rgba(0,0,0,.35);
@@ -1064,6 +1078,12 @@ textarea{
           <input class="txt" id="s-voice-1-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="flex:1;min-width:0">
           <button class="mini" id="c-lib-1">从这里找</button>
         </div>
+        <!-- 保存过音色之后才出现：挑一个存过的，或者把当前这个改名、删掉 -->
+        <div class="voicebook" id="vb-1" hidden>
+          <select class="txt" id="vb-1-sel"></select>
+          <button class="mini" id="vb-1-ren">改名</button>
+          <button class="mini danger" id="vb-1-del">删除</button>
+        </div>
       </div>
       <div class="field">
         <div class="lb"><b>TA 拿着遥控器时用另一个音色</b><small>开着才能填下面那个。同一个角色一般不需要，除非你想让"操控的语气"听起来是另一个人。</small></div>
@@ -1074,6 +1094,11 @@ textarea{
         <div class="row2">
           <input class="txt" id="s-voice-2-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="flex:1;min-width:0">
           <button class="mini" id="c-lib-2">从这里找</button>
+        </div>
+        <div class="voicebook" id="vb-2" hidden>
+          <select class="txt" id="vb-2-sel"></select>
+          <button class="mini" id="vb-2-ren">改名</button>
+          <button class="mini danger" id="vb-2-del">删除</button>
         </div>
       </div>
       <div class="field">
@@ -1393,7 +1418,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.26';
+  var VERSION = '1.13.27';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2486,6 +2511,12 @@ textarea{
        没有实测环境就不假装支持，见「合成平台」那一栏的说明。 */
     ttsPlatform: 'fish',   // fish | openai | custom
     ttsLangBoost: false,   // OpenAI：加 instruction 参数（要求它"喘、气声"）—— 成本相同但更贴
+
+    /* 音色簿：保存过的音色 + 当时那套合成参数，可以随时挑回来。
+       每条 {name, id, model, format, speed}。不含令牌，所以能跟着全局变量走。 */
+    voiceBook: [],
+    voiceSel1: '',         // 你拿着遥控器时选中的那一条（名字）
+    voiceSel2: '',         // TA 拿着遥控器时选中的那一条
 
     /* 高级：请求头与字段名
        不同中转对"模型放哪个头、音色字段叫什么"的要求不一样，缺一项就整条打不通。
@@ -6043,9 +6074,14 @@ textarea{
       toast('已保存 · 可以去点「连通性检查」', 2800);
     }
   }
-  /* 保存按钮的接线 */
+  /* 保存按钮的接线。
+     音色那个按钮额外做一件事：把当前这套参数存成音色簿里的一条 ——
+     这之后面板上才会出现那个下拉框。 */
   onEl('#c-save-conn', 'click', function () { saveAll('conn'); });
-  onEl('#c-save-voice', 'click', function () { saveAll('voice'); });
+  onEl('#c-save-voice', 'click', function () {
+    saveAll('voice');
+    bookSaveCurrent();
+  });
 
   /* 第二个音色是可选功能：关掉时清空它，两个档位共用第一个音色 */
   function bindVoiceTwo() {
@@ -6074,7 +6110,175 @@ textarea{
   bindVoiceSlot(2, 'ttsVoiceTease');
   bindVoiceTwo();
 
-  function paintTransport() {
+  /* =========================================================
+   * 音色簿
+   *
+   * 「保存音色与参数」按下去时，除了把界面上的值写回配置，还会把**当前这套**
+   * （音色 ID + 模型 + 格式 + 语速）另存成音色簿里的一条。之后这个下拉框才出现：
+   * 挑一条就把那套参数整套还原，不用再一个个格子重填。
+   *
+   * 命名走 window.prompt —— 手机上是一个原生输入框，比再做一个重命名面板短得多。
+   * 同名再存就是覆盖，这是"改完再存一次"的自然期望，所以不拦。
+   * ======================================================= */
+  function slotInput(n) { return $('#' + (n === 2 ? 's-voice-2-input' : 's-voice-1-input')); }
+  function slotSelKey(n) { return n === 2 ? 'voiceSel2' : 'voiceSel1'; }
+
+  function findBook(name) {
+    for (var i = 0; i < S.voiceBook.length; i++) if (S.voiceBook[i].name === name) return i;
+    return -1;
+  }
+  /* 把当前这套存成一条。n 决定"当前音色 ID"取哪个槽位 ——
+     在第二格上按保存时，取的是 TA 那一格的值，不能一律拿 ttsVoice。 */
+  function addBook(name, n) {
+    name = String(name || '').trim().slice(0, 16);
+    if (!name) { name = '音色 ' + (S.voiceBook.length + 1); }
+    var rec = {
+      name: name,
+      id: ((n === 2 ? S.ttsVoiceTease : S.ttsVoice) || ''),
+      model: S.ttsModel || '',
+      format: S.ttsFormat || 'mp3',
+      speed: S.ttsSpeed || 1
+    };
+    var at = findBook(name);
+    if (at >= 0) { S.voiceBook[at] = rec; return { rec: rec, over: true }; }
+    S.voiceBook.push(rec);
+    return { rec: rec, over: false };
+  }
+  function renameBook(oldName, newName) {
+    newName = String(newName || '').trim().slice(0, 16);
+    var at = findBook(oldName);
+    if (at < 0) return { ok: false, why: '这一条已经不在了' };
+    if (!newName) return { ok: false, why: '名字不能是空的' };
+    if (newName === oldName) return { ok: true, same: true };
+    if (findBook(newName) >= 0) return { ok: false, why: '已经有同名的了' };
+    S.voiceBook[at].name = newName;
+    for (var s = 1; s <= 2; s++) {
+      var k = slotSelKey(s);
+      if (S[k] === oldName) S[k] = newName;
+    }
+    return { ok: true, renamed: newName };
+  }
+  function delBook(name) {
+    var at = findBook(name);
+    if (at < 0) return;
+    S.voiceBook.splice(at, 1);
+    for (var s = 1; s <= 2; s++) { var k = slotSelKey(s); if (S[k] === name) S[k] = ''; }
+  }
+
+  /* 把某一条的整套参数还原到界面上。
+     不动合成平台与高级请求头 —— 那些是"这条中转怎么打"的设置，
+     换个音色不该顺手把它们也换了。 */
+  function applyBook(n, name) {
+    var at = findBook(name);
+    if (at < 0) return false;
+    var b = S.voiceBook[at];
+    var inp = slotInput(n);
+    if (inp) inp.value = b.id;
+    if (n === 2) S.ttsVoiceTease = b.id; else S.ttsVoice = b.id;
+    if (b.model) S.ttsModel = b.model;
+    if (b.format) S.ttsFormat = b.format;
+    if (typeof b.speed === 'number') S.ttsSpeed = clamp(b.speed, 0.5, 1.5);
+    S[slotSelKey(n)] = b.name;
+    paintVoice();
+    paintBook();
+    persist();
+    VOC.addLog('音色簿：套用「' + b.name + '」' + (b.id ? '（' + b.id.slice(0, 12) + '…）' : '（没有 ID）'), 'hi');
+    toast('已套用音色「' + b.name + '」', 2200);
+    return true;
+  }
+
+  /* 画下拉框。空音色簿时整块隐藏 —— 保存过一次才会出现。 */
+  var BOOK_PAINTING = false;
+  function paintBook() {
+    BOOK_PAINTING = true;
+    for (var n = 1; n <= 2; n++) {
+      var box = $('#vb-' + n), sel = $('#vb-' + n + '-sel');
+      if (!box || !sel) continue;
+      if (!S.voiceBook.length) { box.hidden = true; sel.innerHTML = ''; continue; }
+      box.hidden = false;
+      var cur = S[slotSelKey(n)];
+      var h = '<option value="">（选一个存过的音色）</option>';
+      for (var i = 0; i < S.voiceBook.length; i++) {
+        var b = S.voiceBook[i];
+        h += '<option value="' + esc4(b.name) + '"' + (b.name === cur ? ' selected' : '') + '>'
+          + esc4(b.name) + (b.id ? '' : '（没有 ID）') + '</option>';
+      }
+      sel.innerHTML = h;
+      sel.value = (cur && findBook(cur) >= 0) ? cur : '';
+    }
+    BOOK_PAINTING = false;
+  }
+
+  (function bindBook() {
+    for (var n = 1; n <= 2; n++) {
+      (function (n) {
+        onEl('#vb-' + n + '-sel', 'change', function () {
+          if (BOOK_PAINTING) return;
+          if (!this.value) { S[slotSelKey(n)] = ''; persist(); paintBook(); return; }
+          applyBook(n, this.value);
+        });
+        onEl('#vb-' + n + '-ren', 'click', function () {
+          var cur = S[slotSelKey(n)];
+          if (!cur) { toast('先在下拉框里选一个音色'); return; }
+          var name = window.prompt('给它改个名字（最多 16 字）', cur);
+          if (name === null) return;
+          var r = renameBook(cur, name);
+          if (!r.ok) { toast('改名失败：' + r.why, 2800); return; }
+          if (r.same) return;
+          paintBook();
+          paintVoice();      // 音色槽位上的名字也刷新，别让两处对不上
+          persist();
+          toast('已改名为「' + r.renamed + '」');
+        });
+        onEl('#vb-' + n + '-del', 'click', function () {
+          var cur = S[slotSelKey(n)];
+          if (!cur) { toast('先在下拉框里选一个音色'); return; }
+          if (!window.confirm('从音色簿里删掉「' + cur + '」？\n只会少一条保存记录，音色 ID 本身不会动。')) return;
+          delBook(cur);
+          paintBook();
+          persist();
+          toast('已删除「' + cur + '」');
+        });
+      })(n);
+    }
+  })();
+
+  /* 保存按钮：写回配置之后，顺手把当前这套另存成音色簿里的一条。
+     哪个槽位填了 ID 就存哪一个 —— 两个都填了（两套音色）就存两条。 */
+  function bookSaveCurrent() {
+    var slots = [];
+    if (S.ttsVoice) slots.push(1);
+    if (S.ttsVoiceTease) slots.push(2);
+    if (!slots.length) {
+      VOC.addLog('音色簿：音色 ID 是空的，没存进音色簿', 'warn');
+      return null;
+    }
+    var last = null;
+    for (var k = 0; k < slots.length; k++) {
+      var n = slots[k];
+      var curId = (n === 2 ? S.ttsVoiceTease : S.ttsVoice);
+      var guess = '';
+      for (var i = 0; i < S.voiceBook.length; i++) {
+        var b = S.voiceBook[i];
+        if (b.id && b.id === curId && b.model === S.ttsModel) guess = b.name;
+      }
+      var who = (n === 2) ? 'TA 拿着遥控器时用的' : '你拿着遥控器时用的';
+      var name = window.prompt('把「' + who + '」这套音色和参数存成一条，起个名字：', guess);
+      if (name === null) continue;    // 这条不存，接着问下一个
+      var r = addBook(name, n);
+      S[slotSelKey(n)] = r.rec.name;
+      paintBook();
+      VOC.addLog('音色簿：' + (r.over ? '覆盖' : '新增') + '「' + r.rec.name + '」', 'ok');
+      last = r.rec;
+    }
+    if (!last) return null;
+    persist();
+    toast('已存进音色簿：「' + last.name + '」', 2600);
+    return last;
+  }
+
+  function bindVoice() {
+    var v = $('#s-voice'); if (v) v.textContent = VOICE_LABEL[S.voice] || '关';
     var direct = (S.ttsTransport === 'direct');
     var b = $('#s-transport');
     if (b) b.textContent = direct ? '直连中转' : '经本机转发';
@@ -6131,6 +6335,7 @@ textarea{
     paintTransport();
     paintPlatform();
     paintVoice();
+    paintBook();      // 音色簿：有存过的才显示，记得跟着读档一起刷
   }
 
   /* 自动播放的警示：三处一起亮 —— 两个开关的脉冲、语音页的警示条、设置页入口的红字。
@@ -7024,6 +7229,10 @@ textarea{
       toy_tts_auth: S.ttsAuth,
       toy_tts_voice: S.ttsVoice,
       toy_tts_voicet: S.ttsVoiceTease,
+      // 音色簿里当前选中哪一条（名字）。音色值本身会有"改了没存"的中间态，
+      // 这两个选择跟踪的是"上次套用的是哪条"，所以单独存。
+      toy_voicesel1: S.voiceSel1,
+      toy_voicesel2: S.voiceSel2,
       toy_tts_model: S.ttsModel,
       toy_tts_format: S.ttsFormat,
       toy_tts_speed: S.ttsSpeed,
@@ -7033,6 +7242,8 @@ textarea{
       toy_tts_extra: S.ttsExtraHdrs,
       toy_tts_latency: S.ttsLatency,
       toy_tts_langboost: S.ttsLangBoost,
+      // 音色簿跟全局走（它不含令牌，且"我存过哪几个音色"是跨对话的偏好）
+      toy_voicebook: S.voiceBook,
       // 输出开关也算偏好：换聊天时不该被重置
       toy_out_vol: S.voiceVol,
       toy_out_auto: S.voiceAuto,
@@ -7121,6 +7332,8 @@ textarea{
     if (typeof g.toy_tts_auth === 'string') S.ttsAuth = g.toy_tts_auth;
     if (typeof g.toy_tts_voice === 'string') S.ttsVoice = g.toy_tts_voice;
     if (typeof g.toy_tts_voicet === 'string') S.ttsVoiceTease = g.toy_tts_voicet;
+    if (typeof g.toy_voicesel1 === 'string') S.voiceSel1 = g.toy_voicesel1;
+    if (typeof g.toy_voicesel2 === 'string') S.voiceSel2 = g.toy_voicesel2;
     if (typeof g.toy_tts_model === 'string') S.ttsModel = g.toy_tts_model;
     if (typeof g.toy_tts_format === 'string') S.ttsFormat = g.toy_tts_format;
     if (typeof g.toy_tts_speed === 'number') S.ttsSpeed = clamp(g.toy_tts_speed, 0.5, 1.5);
@@ -7130,6 +7343,25 @@ textarea{
     if (typeof g.toy_tts_extra === 'string') S.ttsExtraHdrs = g.toy_tts_extra;
     if (['low', 'balanced', 'normal'].indexOf(g.toy_tts_latency) >= 0) S.ttsLatency = g.toy_tts_latency;
     if (typeof g.toy_tts_langboost === 'boolean') S.ttsLangBoost = g.toy_tts_langboost;
+    /* 音色簿：只收形状对的条目，别让一段坏数据把整个下拉框搞崩。
+       name 必填，id 允许为空（存过但还没填 ID 的情况）。 */
+    if (Object.prototype.toString.call(g.toy_voicebook) === '[object Array]') {
+      var bk = [];
+      for (var bi = 0; bi < g.toy_voicebook.length && bk.length < 60; bi++) {
+        var be = g.toy_voicebook[bi];
+        if (!be || typeof be !== 'object') continue;
+        var bn = String(be.name == null ? '' : be.name).trim().slice(0, 16);
+        if (!bn) continue;
+        bk.push({
+          name: bn,
+          id: String(be.id == null ? '' : be.id).trim(),
+          model: String(be.model == null ? '' : be.model).trim(),
+          format: String(be.format == null ? 'mp3' : be.format).trim() || 'mp3',
+          speed: (typeof be.speed === 'number' ? clamp(be.speed, 0.5, 1.5) : 1)
+        });
+      }
+      S.voiceBook = bk;
+    }
     if (typeof g.toy_out_vol === 'number') S.voiceVol = clamp(g.toy_out_vol, 0, 100);
     if (typeof g.toy_out_auto === 'boolean') S.voiceAuto = g.toy_out_auto;
     /* 预热：只有用户亲手改过（toy_out_warmset）才沿用存档值。
@@ -7197,8 +7429,7 @@ textarea{
     if (['fish', 'openai', 'custom'].indexOf(v.toy_cfg_platform) >= 0) S.ttsPlatform = v.toy_cfg_platform;
     if (typeof v.toy_cfg_langboost === 'boolean') S.ttsLangBoost = v.toy_cfg_langboost;
     if (typeof v.toy_cfg_target_url === 'string') S.ttsTarget = v.toy_cfg_target_url;
-    if (typeof v.toy_cfg_ttsvoice === 'string') S.ttsVoice = v.toy_cfg_ttsvoice;
-    // 旧存档里的 toy_cfg_ttsvoicet（调教音色）已废弃：音色合并成一套，读到了也不采用
+    if (typeof v.toy_cfg_ttsvoice === 'string') S.ttsVoice = v.toy_cfg_ttsvoice;    // 旧存档里的 toy_cfg_ttsvoicet（调教音色）已废弃：音色合并成一套，读到了也不采用
     if (typeof v.toy_cfg_ttsmodel === 'string') S.ttsModel = v.toy_cfg_ttsmodel;
     if (typeof v.toy_cfg_ttsformat === 'string') S.ttsFormat = v.toy_cfg_ttsformat;
     if (typeof v.toy_cfg_ttsspeed === 'number') S.ttsSpeed = clamp(v.toy_cfg_ttsspeed, 0.5, 1.5);
