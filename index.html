@@ -337,6 +337,26 @@ button{border:0;background:none;cursor:pointer}
 .freeze[hidden]{display:none}
 .phase-head{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);letter-spacing:.1em}
 .phase-head b{color:var(--text);font-weight:600}
+.phase-head .full-mark{color:var(--amber);font-weight:700;letter-spacing:.14em}
+.phase-head .full-mark[hidden]{display:none}
+
+/* ---------- 阶段值两个闸门：贴上 / 临界 / 冲刺 ---------- */
+.gate{display:flex;gap:8px;margin:10px 0 2px;flex-wrap:wrap}
+.gate button{
+  flex:1 1 30%;min-width:86px;padding:9px 6px;border-radius:11px;cursor:pointer;
+  font-size:11.5px;letter-spacing:.08em;font-family:inherit;
+  border:1px solid var(--line);background:rgba(238,222,242,.03);color:var(--dim);
+  transition:border-color .18s,background .18s,color .18s,opacity .18s;
+}
+.gate button:active{transform:scale(.98)}
+.gate button:disabled{opacity:.32;cursor:not-allowed}
+#btn-hold.on{border-color:var(--cyan-a40);background:var(--cyan-a08);color:var(--cyan)}
+#btn-edge.on:not(:disabled){border-color:rgba(235,168,102,.55);background:rgba(235,168,102,.12);color:var(--amber)}
+#btn-dash.on:not(:disabled){
+  border-color:var(--hot-a55);background:var(--hot-a20);color:var(--hot-2);
+  font-weight:700;animation:gatePulse 1.25s ease-in-out infinite;
+}
+@keyframes gatePulse{0%,100%{opacity:1}50%{opacity:.6}}
 
 /* ---------- 通用面板 ---------- */
 .panel{
@@ -815,12 +835,21 @@ textarea{
     <div class="phase-head">
       <span>累积 <b id="aro">0</b>/100</span>
       <span id="stage-name">第 1 阶段 · 适应</span>
+      <span class="full-mark" id="full-mark" hidden>已满</span>
     </div>
     <div class="freeze" id="freeze-tip" hidden>AI 正在生成，剧情时间暂停 · 点这里立即继续</div>
     <div class="phases" id="phases">
       <div class="phase"><i></i></div><div class="phase"><i></i></div>
       <div class="phase"><i></i></div><div class="phase"><i></i></div>
       <div class="phase"><i></i></div>
+    </div>
+
+    <!-- 阶段值的两个闸门。贴上控制"还涨不涨"；临界在第 5 阶段解锁，
+         冲刺要等阶段值满了才解锁。满了不会自己轮回，往哪走由这里决定。 -->
+    <div class="gate">
+      <button type="button" id="btn-hold">贴上 · 累积中</button>
+      <button type="button" id="btn-edge" disabled>临界</button>
+      <button type="button" id="btn-dash" disabled>冲刺</button>
     </div>
 
     <section class="panel">
@@ -1247,8 +1276,12 @@ textarea{
         <input class="num" id="s-gain" type="number" min="10" max="400" value="100" step="10">
       </div>
       <div class="field">
-        <div class="lb"><b>到达临界后归零</b><small>关闭则临界后维持在满值附近持续输出。</small></div>
+        <div class="lb"><b>到达临界后归零</b><small>阶段值满了之后玩家按「临界」时的落点。<br>打开：回到起点重新爬；关闭：停在高原上继续输出。<br>无论哪种，满了都不会自己轮回 —— 往哪走由玩家按。</small></div>
         <div class="sw on" id="s-reset"><i></i></div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>冲刺后累积减速</b><small>冲刺做完了，阶段值从头来，而且之后要更久才爬得回来。这里是那次减速的倍数。<br><code>0.35</code> = 约三倍时间；填 <code>1</code> 就等于不减速。装置重开或换目标时恢复成 1。</small></div>
+        <input class="num" id="s-dashrate" type="number" min="0.1" max="1" step="0.05" value="0.35">
       </div>
       <div class="field">
         <div class="lb"><b>切换模式自动推荐频率</b><small>每种模式有自己合适的工作频段。</small></div>
@@ -1360,7 +1393,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.25';
+  var VERSION = '1.13.26';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2394,6 +2427,8 @@ textarea{
     env: 0,            // 当前包络
     stage: 1,
     peak: 0,           // 临界次数
+    hi: false,         // 阶段值是否已满。满了不再自动轮回，等玩家按「临界」或「冲刺」
+    dashRate: 0.35,    // 冲刺完成后的阶段值减速倍数（0.35 = 约三倍时间才重新爬满）
     lastEvent: '装置就绪',
     stopReason: '',    // 停止原因，写进状态快照，免得 AI 自己编成"玩家关掉了"
     lastActionNote: '', // 遥控器在角色手里时，角色自己决定的档位意图
@@ -2421,6 +2456,8 @@ textarea{
     stageForce: true,
     gain: 100,
     resetOnPeak: true,
+    hold: true,        // 「贴上」总闸：打开则阶段值继续累积，关掉就停在当前值
+    slow: 1,           // 累积减速倍数（冲刺完成后设成 dashRate，重开装置时回到 1）
     recFreq: true,
     // 语音（VOC）：off / buzz（振动音）/ tts（TTS 语音）/ both（两者都开）
     // 默认 off —— TTS 要联网、要中转、要花钱，不替用户默认打开
@@ -3204,6 +3241,154 @@ textarea{
   }
 
   /* =========================================================
+   * 4b. 阶段值的两个闸门：贴上 / 已满
+   *
+   * 「贴上」是一道总闸：打开时阶段值照常累积；关掉就停在当前值不动。
+   *   注意它只拦累积，不拦玩家主动按的「冲击」「临界」「冲刺」——
+   *   关掉是"不再自己往上涨"，不是"把面板锁死"。
+   *
+   * 阶段值满了（hi）不再像以前那样自动轮回重头：满值本身是一道锁，
+   *   锁住累积，同时解锁「冲刺」。要离开满值只有两条路，都得玩家按：
+   *     · 临界 → 回到临界区间或从头开始（按「到达临界后归零」那一档）
+   *     · 冲刺 → 装置直冲顶点，完事后阶段值重来，而且之后要花更久才爬得回来
+   * ======================================================= */
+  function pushAro(d) {
+    if (!S.hold || d <= 0) return;              // 闸门关着：不涨
+    if (S.hi || S.aro >= 100) { S.aro = 100; return; }
+    S.aro = clamp(S.aro + d, 0, 100);
+  }
+
+  /* 冲刺完成：阶段值从头来，并且这一次更慢 */
+  function applyDashSlow() {
+    S.aro = 0;
+    S.stage = 1;
+    S.hi = false;
+    S.slow = S.dashRate;
+    S.lastEvent = '冲刺完成，' + wearerName() + '被放回到适应的起点，再来一次要慢得多';
+    toast('冲刺完成：阶段值归零，之后累积放慢到 ' + Math.round(S.dashRate * 100) + '%', 3600);
+    react('peak');
+    render();
+    syncVars(true);
+  }
+
+  /* 临界回落（面板按钮与满值解锁都用它）：
+     「到达临界后归零」打开 → 回到低位重新爬；关闭 → 留在高原上继续 */
+  function dropToEdge() {
+    S.hi = false;
+    S.aro = S.resetOnPeak ? 6 : 96;
+    S.stage = stageOf(S.aro);
+    render();
+    syncVars(true);
+  }
+
+  /* 满值锁：不自动轮回，同时解锁「冲刺」。pending 要清掉 ——
+     满值那一瞬间如果还挂着"等 AI 生成"，会跟玩家的手动选择打架。 */
+  function enterHi() {
+    if (S.hi) return;
+    S.hi = true;
+    S.pending = false;
+    S.lastEvent = '阶段值已满，' + wearerName()
+      + '到了极限 —— 临界与冲刺都已解锁，之后怎么走由玩家按';
+    toast('阶段值已满', 2600);
+  }
+
+  /* 「贴上」开关：打开就一直往上走，关掉就不再增加 */
+  $('#btn-hold').addEventListener('click', function () {
+    S.hold = !S.hold;
+    this.classList.toggle('on', S.hold);
+    this.textContent = S.hold ? '贴上 · 累积中' : '贴上 · 已停';
+    S.lastEvent = S.hold ? '重新贴上，阶段值继续累积' : '停止刺激，阶段值不再增加';
+    toast(S.hold ? '贴上：阶段值继续上涨' : '已揭开：阶段值不再增加');
+    render();
+    pushAction(act('把装置重新贴回去，继续刺激', '重新贴上装置，继续刺激'));
+    persist();
+    if (S.auto) react('mode');
+  });
+
+  /* 「临界」：满值时把阶段值放回临界区间（或从头开始），装置继续跑 */
+  $('#btn-edge').addEventListener('click', function () {
+    if (!S.hi) { toast('阶段值还没满 —— 到了第 5 阶段、条子走满才能按', 2800); return; }
+    if (modeById(S.mode).oneShot) {
+      S.mode = 'edge';
+      var ns = $('#modes').children;
+      for (var k = 0; k < ns.length; k++) ns[k].classList.toggle('on', ns[k].dataset.id === S.mode);
+    }
+    S.peak++;
+    HAP.burst();
+    HAP.fire(S.env, hz());
+    dropToEdge();
+    S.lastEvent = '第 ' + S.peak + ' 次临界爆发' + (S.resetOnPeak ? '，阶段值回到起点' : '，停在高原上');
+    toast('临界爆发 ×' + S.peak);
+    react('peak');
+  });
+
+  /* 「冲刺」：满值才解锁。装置直冲顶点，完事后阶段值重来且累积放慢。
+     与「震动模式」里那个冲刺不同 —— 那个是一次性动作、到顶自动停机；
+     这里是本轮的收尾一击，把装置交还给玩家。 */
+  $('#btn-dash').addEventListener('click', function () {
+    if (!S.hi) { toast('阶段值还没满 —— 满了才会解锁冲刺', 2800); return; }
+    S.mode = 'rush';
+    var ns = $('#modes').children;
+    for (var k = 0; k < ns.length; k++) ns[k].classList.toggle('on', ns[k].dataset.id === S.mode);
+    if (!S.on) startSilent();
+    S.aro = 100;
+    S.stage = 5;
+    S.env = 1;
+    S.lastEvent = '冲刺：' + wearerName() + '被直接推到顶点';
+    HAP.burst();
+    toast('冲刺！', 2200);
+    pushAction(act('按下冲刺键，把强度直接推到顶点', '按下冲刺键，直接冲到顶'));
+    render();
+    react('peak');
+    applyDashSlow();
+  });
+
+  /* 这两个函数每帧都会被 render 调到，按钮只查一次就缓存住。
+     还没插进 DOM 时（真的在 DOM 之前被调到）不缓存，下次再取，避免缓存住 null。 */
+  var GATE_EL = {};
+  function gateEl(id) {
+    return (id in GATE_EL) ? GATE_EL[id] : (function () {
+      var el = $('#' + id);
+      if (el) GATE_EL[id] = el;
+      return el;
+    })();
+  }
+
+  function paintHold() {
+    var b = gateEl('btn-hold');
+    if (!b) return;
+    b.classList.toggle('on', S.hold);
+    b.textContent = S.hold ? '贴上 · 累积中' : '贴上 · 已停';
+  }
+
+  /* 「临界」「冲刺」的解锁由阶段值直接决定：
+     临界 = 进入第 5 阶段即可用；冲刺 = 阶段值满了才可用。
+     每帧都会被 render 调到，所以只碰 class/disabled 这类便宜操作。 */
+  function paintUnlocks() {
+    /* target='user'（遥控器在 TA 手里）时这套面板是只读仪表，跟模式按钮同一条规矩：
+       档位由 AI 决定，这两个闸门也由 AI 那边走。只留「贴上」给玩家 ——
+       那是"停不停手"的物理动作，不是调度。 */
+    var own = (S.target !== 'user');
+    var ready = own && S.stage >= 5;
+    var e = gateEl('btn-edge'), d = gateEl('btn-dash');
+    if (e) {
+      e.disabled = !ready;
+      e.classList.toggle('on', ready);
+      e.title = own
+        ? (ready ? '把阶段值放回临界区间（或从头开始），装置继续运转' : '进入第 5 阶段后可用')
+        : '遥控器在 TA 手里，这一档由 TA 决定';
+    }
+    if (d) {
+      var full = own && !!S.hi;
+      d.disabled = !full;
+      d.classList.toggle('on', full);
+      d.title = own
+        ? (full ? '冲刺到顶点，完成后阶段值归零且累积放慢' : '阶段值满了才会解锁')
+        : '遥控器在 TA 手里，这一档由 TA 决定';
+    }
+  }
+
+  /* =========================================================
    * 4c. 语音台词库
    *
    * 三档对应三种口气（1.12.0 的第三档也照顾到了）：
@@ -3321,6 +3506,93 @@ textarea{
   /* 已经带标记就别再叠一层（AI 给的台词通常自带） */
   function hasMark(s) { return /^\s*\[[^\]]+\]/.test(String(s || '')); }
 
+  /* ---------- 拦住读数串场进来的"不是台词的东西" ----------
+     AI 偶尔会把读数里的枚举值当成台词塞进「语音」字段 —— 实测见过 [气声] 暴雨。
+     它一旦进来就会被念出来，而玩家在面板上看到的是一句莫名其妙的模式名。
+     三道拦：① 剥掉混进来的字段名；② 逐行剔掉"本身就等于某个枚举值"的裸行；
+     ③ 剔掉没有标点的孤立词（台词可以是"嗯……"，但不会是光秃秃两个字）。 */
+  var FIELD_NAMES = ['开关', '模式', '频率', '强度', '说明', '心声', '语音'];
+  var READOUT_VALUES = ['开', '关', '脉冲', '潮汐', '心跳', '渐强', '乱流', '撩拨', '暴雨', '临界', '冲刺'];
+
+  /* 剥掉尾巴上混进来的「模式=暴雨|」这类残片 */
+  function stripFieldTail(s) {
+    var out = String(s || '').replace(new RegExp('(?:' + FIELD_NAMES.join('|') + ')\\s*[=:：]\\s*[^|｜\\r\\n]*', 'g'), ' ');
+    return out.replace(/[|｜]\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  /* 摘片段只针对"模式名"这一类 —— 它们绝不可能是台词的一部分。
+     「开」「关」不进这张表：它们太常用，按片段摘会把"张不开口""关不掉"砍坏；
+     它们只参与整值判断（下面 looksLikeReadout 的第一条），那里是安全的。 */
+  var READOUT_WORDS = ['脉冲', '潮汐', '心跳', '渐强', '乱流', '撩拨', '暴雨', '临界', '冲刺'];
+
+  /* AI 把整个读数当台词的兜底：内容本身就只是个枚举值 → 判定为串场，丢掉。
+     判据分两种：
+       ① 剥掉标记和标点之后，整个就是某个枚举值（"暴雨"、"开"、"模式=暴雨"）
+       ② 拿模式名当分隔符切一刀，每一段都只是标记或标点 ——
+          说明整行都是模式名拼的（"暴雨 临界"），这时整行作废 */
+  function looksLikeReadout(s) {
+    var bare = String(s || '')
+      .replace(/\[[^\]]*\]\s*/g, '')
+      .replace(/[\s，。、,.;:：；！？!?…—\-~～"'「」『』]/g, '');
+    if (bare && READOUT_VALUES.indexOf(bare) >= 0) return true;
+
+    var re = new RegExp('(' + READOUT_WORDS.join('|') + ')', 'g');
+    if (!re.test(String(s || ''))) return false;
+    re.lastIndex = 0;
+    var segs = String(s || '').split(re).filter(function (x) { return x != null && x !== ''; });
+    for (var i = 0; i < segs.length; i++) {
+      // 只允许「空白/标记/标点」存在；出现任何实义字就说明这行有真正的台词，留着
+      if (segs[i].replace(/\[[^\]]*\]/g, '').replace(/[\s，。、,.;:：；！？!?…—\-~～"'「」『』]/g, '')) return false;
+    }
+    return true;
+  }
+
+  /* 这一串里有没有实义字（剥掉标记、空白和标点之后还剩东西） */
+  function realWords(s) {
+    return !!String(s || '')
+      .replace(/\[[^\]]*\]/g, '')
+      .replace(/[\s，。、,.;:：；！？!?…—\-~～"'「」『』]/g, '');
+  }
+  /* 剥完之后什么都不剩（只有标记和标点）—— 合成出来会是一段没有内容的气声 */
+  function noRealWord(s) { return !realWords(s); }
+
+  /* 摘掉行里混进来的模式名："喘息。暴雨" → "喘息。"
+     只摘模式名那一段，不碰正常台词。 */
+  function dropReadoutSeg(s) {
+    var re = new RegExp('(' + READOUT_WORDS.join('|') + ')', 'g');
+    return String(s || '')
+      .split(re)
+      .map(function (x) { return (x != null && READOUT_WORDS.indexOf(x) >= 0) ? ' ' : x; })
+      .join('')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  /* 清一行：剥字段名 → 摘掉混进来的模式名 → 该作废的作废。
+     作废的条件是**"摘之前有实义字、摘完只剩标记和标点"** —— 那说明这一句的内容
+     本来就是读数里的档位名（"[气声] 暴雨" → 空话），留着只会合成出一句莫名的气声。
+     本来就只有标记的「[气声]」（AI 自己排的独立标记行）不算，原样留着。
+     首尾只削分隔符和空白；句末的「。」「……」「？」留着 —— 它们本来就在念的节奏里。 */
+  function cleanVoiceLine(line) {
+    var raw = String(line || '');
+    var s = dropReadoutSeg(stripFieldTail(raw));
+    if (realWords(raw) && noRealWord(s)) return '';
+    if (looksLikeReadout(s)) return '';
+    return s.replace(/^[\s，、,；;：:|｜]+|[\s，、,；;：:|｜]+$/g, '').trim();
+  }
+
+  /* 整段清洗：逐行过 cleanVoiceLine，最多留 3 行。
+     行内该丢的（档位名串场）由 cleanVoiceLine 负责；这里只做行数的收口。 */
+  function cleanVoiceText(t) {
+    var lines = String(t || '').split(/[\r\n]+/);
+    var out = [];
+    for (var i = 0; i < lines.length && out.length < 3; i++) {
+      var c = cleanVoiceLine(lines[i]);
+      if (c) out.push(c);
+    }
+    return out.join('\n');   // 全被丢掉时返回空串，上层回退到台词库
+  }
+
   /* ---- 台词库的取用接口（试听选择器与正式播放共用同一套） ---- */
   /* 某一类某一档的库本体。
      三级结构（moan/tease/self）是 [5 档][每条]；beg 是不分档的扁平 [每条]。
@@ -3371,11 +3643,16 @@ textarea{
       out.fromBody = true;
       return out;
     }
-    // 2) AI 在读数里明写的语音字段
-    var given = fillName(String(voiceLine || '').trim());
+    // 2) AI 在读数里明写的语音字段。
+    //    先清洗：读数里的枚举值（"暴雨"这种模式名）偶尔会被 AI 顺手塞进来，
+    //    不清的话它会被原样念出来，而正文里根本没有这句话。
+    var given = cleanVoiceText(fillName(String(voiceLine || '').trim()));
     if (given && voiceish(given)) {
       out.text = hasMark(given) ? given : (voiceMark(kind, stage) + ' ' + given);
       return out;
+    }
+    if (voiceLine && !given) {
+      try { console.log('[TOY·LINK 语音] 读数里的「语音」字段被判定为读数串场，已丢弃：「' + String(voiceLine).trim().slice(0, 40) + '」'); } catch (e) { /* noop */ }
     }
     // 3) 退回台词库：按档位取现成的，自动配情绪标记
     out.text = libPick(kind, stage);
@@ -3513,7 +3790,12 @@ textarea{
 
     aroEl.textContent = Math.round(S.aro);
     var frozenNow = S.on && (HOLD || BUSY) && S.freezeOnGen;
-    stageName.textContent = (frozenNow ? '⏸ ' : '') + '第 ' + S.stage + ' 阶段 · ' + STAGES[S.stage - 1].name;
+    stageName.textContent = (frozenNow ? '⏸ ' : '') + '第 ' + S.stage + ' 阶段 · ' + STAGES[S.stage - 1].name
+      + (S.hi ? ' · 已满' : (S.hold ? '' : ' · 累积已停'));
+    var fm = $('#full-mark');
+    if (fm) fm.hidden = !S.hi;
+    paintUnlocks();
+    paintHold();
     var tip = $('#freeze-tip');
     if (tip) tip.hidden = !frozenNow;
     for (var i = 0; i < phaseEls.length; i++) {
@@ -3570,9 +3852,10 @@ textarea{
       if (!frozen) {
         S.t += dt;
 
-        // 累积：强度与频率共同决定，模式有增益差
-        var rate = (0.075 * pow01() + 0.055 * Math.pow(S.freq / 100, 0.8)) * m.gain * (S.gain / 100);
-        S.aro = clamp(S.aro + rate * dt * 6.2, 0, 100);
+        // 累积：强度与频率共同决定，模式有增益差。
+        // 再乘两道系数 —— slow 是冲刺后的减速，「贴上」开关关着时 pushAro 直接不放行。
+        var rate = (0.075 * pow01() + 0.055 * Math.pow(S.freq / 100, 0.8)) * m.gain * (S.gain / 100) * (S.slow || 1);
+        pushAro(rate * dt * 6.2);
 
         var st = stageOf(S.aro);
         if (st !== S.stage) {
@@ -3586,27 +3869,32 @@ textarea{
             toast('进入第 ' + st + ' 阶段 · ' + STAGES[st - 1].name);
           }
         }
-        if (S.aro >= 99.5) {
-          S.peak++;
-          HAP.burst();
 
-          // 冲刺模式是一次性的：到顶即完成，装置自己停下，要再来一次得重新点启动
+        // 第 5 阶段开始「临界」按钮可用（解锁状态在 paintUnlocks 里画）
+        if (S.stage >= 5) paintUnlocks();
+
+        /* 阶段值满了：不再自动轮回，改成一道锁。
+           以前这里是"pop 一次 → 归零 → 继续爬"，无限循环；
+           现在满值停下来，由玩家按「临界」或「冲刺」决定往哪走。
+           满值只触发一次（用 !S.hi 挡重复）。 */
+        if (S.aro >= 99.5 && !S.hi) {
+          S.aro = 100;
+          S.stage = 5;
+          enterHi();
+          paintUnlocks();
+          // 冲刺模式到顶视为"这一轮冲完了"：阶段值重来并放慢，装置交给玩家决定收不收
           if (m.oneShot) {
-            S.aro = 100;
-            S.stage = 5;
-            S.lastEvent = '冲刺到顶，' + wearerName() + '直接到了顶点，装置随即自动停下';
-            toast('冲刺完成');
-            stop('冲刺到顶');
             HAP.fire(S.env, hz());
+            applyDashSlow();
             return;
           }
-
-          S.lastEvent = '第 ' + S.peak + ' 次临界爆发';
-          if (S.auto) react('peak');
-          toast('临界爆发 ×' + S.peak);
-          S.aro = S.resetOnPeak ? 6 : 96;
-          S.stage = stageOf(S.aro);
+          HAP.burst();
+          S.peak++;
+          S.lastEvent = '第 ' + S.peak + ' 次临界爆发（阶段值已满，临界与冲刺已解锁）';
+          react('peak');
         }
+        // 满值期间掉下来（被玩家按了临界/冲刺之外的路径改过）就解锁，允许重新累积
+        if (S.hi && S.aro < 99) { S.hi = false; paintUnlocks(); }
 
         // 限时到点自动停
         if (S.limit > 0 && S.t >= S.limit * 60) stop('限时结束');
@@ -3698,6 +3986,15 @@ textarea{
     L.push('模式：' + m.name + '｜频率：' + hz().toFixed(1) + ' Hz｜强度：' + S.pow + '%');
     L.push('已持续：' + fmtTime(S.t) + (S.limit > 0 ? '｜本次限时：' + S.limit + ' 分钟' : ''));
     L.push('阶段：第 ' + S.stage + ' 阶段·' + sn + '（累积 ' + Math.round(S.aro) + '/100，累计临界 ' + S.peak + ' 次）');
+    // 满值与"贴上"必须明说，否则 AI 会一直写"还在往上爬"，跟面板对不上
+    if (S.hi) {
+      L.push('▲ 累积已经满格：' + wn + ' 顶到头了，不会自己再涨。'
+        + '要往下走只有两条路，都是玩家亲手按的 —— 「临界」（放回临界区间或从头开始）或「冲刺」（直冲顶点，之后归零并放慢）。'
+        + '这一轮不要写"数值继续攀升"，改写"停在顶点上被反复摩擦、等着那一下"。');
+    } else if (!S.hold) {
+      L.push('▲ 装置已经揭开，刺激停下：累积值冻结在当前这一档，不会继续增加。'
+        + '可以写余韵、喘息、缓过来，或者反过来写"忽然空下来"的难耐，但不要写数值还在涨。');
+    }
     L.push('最近变化：' + S.lastEvent);
     if (S.lastActionNote) {
       L.push(cn + ' 自己定下的意图：' + S.lastActionNote + '（接着往下写时保持这个方向）');
@@ -3819,6 +4116,10 @@ textarea{
       toy_arousal: Math.round(S.aro),
       toy_peak: S.peak,
       toy_limit: S.limit,
+      // 阶段值满不满 / 还涨不涨 —— AI 得知道现在是不是"顶到头了"，不然会继续写"一路往上"
+      toy_full: S.hi ? 'on' : 'off',
+      toy_hold: S.hold ? 'on' : 'off',
+      toy_slow: Math.round((S.slow || 1) * 100),
       toy_last_event: S.lastEvent,
       toy_state: stateText()
     };
@@ -4294,6 +4595,9 @@ textarea{
       '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、'
         + '压在喉咙里的碎音。**不要写动作、不要写旁白、不要用括号包住叙述** ——'
         + '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里。',
+      '· 语音里**不许出现读数里的任何信息** —— 不许写模式名（脉冲／潮汐／心跳／渐强／乱流／撩拨／暴雨／临界／冲刺）、'
+        + '开关状态、频率、强度。那些只写在上面那几个字段里。**「暴雨」这种词单独出现时会被当成噪音念出来**，'
+        + '玩家听到的就是一句莫名其妙的档位名。',
       '· 正确例子（照这个格式写：三行，每行开头都是方括号标记）：',
       '　[soft tone][whispering] 你怎么还没睡呀？',
       '　[inhale] 我只是……有点想你了。',
@@ -5004,6 +5308,8 @@ textarea{
     S.clock = 0;
     S.aro = 0;
     S.stage = 1;
+    S.hi = false;       // 新一轮：满值锁解除
+    S.slow = 1;         // 新一轮：冲刺留下的减速清掉（贴上的开关是玩家设置，保留）
     S.stopReason = '';
     lastPhys = 0;
     if (S.audio) AUD.start();
@@ -5041,6 +5347,8 @@ textarea{
     AUD.stop();
     VOC.stopAll();   // 振动音和语音一起收，别让声音留在装置停之后
     S.beg = 0;    // 停了就不用再求了
+    S.hi = false; // 满值锁随停机解除；下次启动是从头爬，不是从"已满"接着算
+    S.slow = 1;   // 减速也一起清掉，别把上一次冲刺的惩罚带到下一轮
     paintBeg();
     paintTargetLock();   // 停了，作用对象可以换了
     render();
@@ -5144,7 +5452,9 @@ textarea{
   $('#power').addEventListener('click', function () { S.on ? stop() : start(); });
   $('#btn-burst').addEventListener('click', function () {
     if (!S.on) { toast('先启动装置'); return; }
-    S.aro = clamp(S.aro + 26, 0, 100);
+    // 冲击是玩家主动按的，不受「贴上」总闸限制 —— 总闸管的是"自己还涨不涨"
+    if (S.hi || S.aro >= 100) { toast('阶段值已经满了 —— 该按「临界」或「冲刺」', 2800); return; }
+    pushAro(26);
     S.env = 1;
     HAP.tap([0, 40, 30, 70, 30, 110]);   // 这是玩家按的键，走按键反馈，不走跟随震动
     S.lastEvent = '手动冲击，强度骤增';
@@ -5278,6 +5588,7 @@ textarea{
     $('#s-drive').textContent = (S.drive === 'inner' ? '面板内生成' : '酒馆聊天');
     $('#s-cd').value = S.cd;
     $('#s-gain').value = S.gain;
+    $('#s-dashrate').value = S.dashRate;
     $('#c-auto').classList.toggle('on', S.auto);
     $('#c-haptap').classList.toggle('on', S.hapticTap);
     $('#c-hapfol').classList.toggle('on', S.hapticFollow);
@@ -6644,6 +6955,13 @@ textarea{
   });
   $('#s-cd').addEventListener('change', function (e) { S.cd = clamp(+e.target.value || 45, 5, 600); bindSettings(); persist(); });
   $('#s-gain').addEventListener('change', function (e) { S.gain = clamp(+e.target.value || 100, 10, 400); bindSettings(); persist(); });
+  $('#s-dashrate').addEventListener('change', function (e) {
+    S.dashRate = clamp(+e.target.value || 0.35, 0.1, 1);
+    e.target.value = S.dashRate;
+    toast('冲刺后累积放慢到 ' + Math.round(S.dashRate * 100) + '%');
+    bindSettings();
+    persist();
+  });
 
   // 视图切换
   document.querySelector('.dock').addEventListener('click', function (e) {
@@ -6739,6 +7057,8 @@ textarea{
       toy_cfg_cd: S.cd,
       toy_cfg_gain: S.gain,
       toy_cfg_reset: S.resetOnPeak,
+      toy_cfg_hold: S.hold,
+      toy_cfg_dashrate: S.dashRate,
       toy_cfg_recfreq: S.recFreq,
       toy_cfg_freeze: S.freezeOnGen,
       toy_cfg_managewb: S.manageWb,
@@ -6833,6 +7153,8 @@ textarea{
     if (typeof v.toy_cfg_cd === 'number') S.cd = v.toy_cfg_cd;
     if (typeof v.toy_cfg_gain === 'number') S.gain = v.toy_cfg_gain;
     if (typeof v.toy_cfg_reset === 'boolean') S.resetOnPeak = v.toy_cfg_reset;
+    if (typeof v.toy_cfg_hold === 'boolean') S.hold = v.toy_cfg_hold;
+    if (typeof v.toy_cfg_dashrate === 'number') S.dashRate = clamp(v.toy_cfg_dashrate, 0.1, 1);
     if (typeof v.toy_cfg_recfreq === 'boolean') S.recFreq = v.toy_cfg_recfreq;
     if (typeof v.toy_cfg_freeze === 'boolean') S.freezeOnGen = v.toy_cfg_freeze;
     if (typeof v.toy_cfg_managewb === 'boolean') S.manageWb = v.toy_cfg_managewb;
@@ -6913,6 +7235,8 @@ textarea{
     buildModes();
     bindSettings();
     bindVoice();      // restore 之后再刷一次：读档的值要反映到语音设置界面上
+    paintHold();      // 两个闸门的初始外观也要跟着读档的值走
+    paintUnlocks();
     markDurChip();
     ['#freq', '#pow', '#dur'].forEach(function (s) {
       var el = $(s);
@@ -7030,7 +7354,13 @@ textarea{
    *
    * 只在酒馆助手脚本环境里生效；当前端卡加载时这些接口不存在，直接跳过。
    * ======================================================= */
-  var UPD_POINTER = 'https://raw.githubusercontent.com/fJForever/toy-link/main/version.txt';
+  /* 指针也要多源：jsDelivr 会长时间缓存 version.txt 本身，只问它一家会把
+     "缓存没翻页"误判成"没有新版"。顺序按"翻页最快"排，raw 放最后（可能被墙）。 */
+  var UPD_POINTERS = [
+    'https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/version.txt',
+    'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/version.txt',
+    'https://raw.githubusercontent.com/fJForever/toy-link/main/version.txt'
+  ];
   var UPD_BASES = [
     'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/dist/',
     'https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/dist/',
@@ -7148,10 +7478,33 @@ textarea{
       console.log('[TOY·LINK] 这个环境没有脚本库接口，跳过自更新（前端卡属正常）');
       return;
     }
-    fetchText(UPD_POINTER, 6000).then(function (txt) {
-      var remote = String(txt || '').trim();
-      if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(remote)) return;
-      if (!newerThan(VERSION, remote)) return;   // 自己不比它旧，什么都不做
+
+    /* 指针文件也要逐个源试。
+       踩过的坑：jsDelivr 对 version.txt 的响应头 max-age=604800，改完之后
+       它还照旧发上一个版本号长达十几分钟。早先只在第一个源上取一次指针，
+       于是"指针没翻页"被当成"没有新版"，后面两个已经翻页的源根本没机会问。
+       现在谁先给出更新的版本号就用谁。 */
+    var best = '';
+    var pi = 0;
+    (function nextPointer() {
+      if (pi >= UPD_POINTERS.length) { afterPointer(); return; }
+      var u = UPD_POINTERS[pi++];
+      fetchText(u, 6000).then(function (txt) {
+        var v = String(txt || '').trim();
+        if (/^[0-9]+\.[0-9]+\.[0-9]+$/.test(v) && newerThan(best || '0.0.0', v)) best = v;
+        // 已经拿到比手头这个新的了，不用再问别的源
+        if (best && newerThan(VERSION, best)) { afterPointer(); return; }
+        nextPointer();
+      }, function (e) {
+        console.log('[TOY·LINK] 指针源失败 ' + u + '：' + ((e && e.message) || e));
+        nextPointer();
+      });
+    })();
+
+    function afterPointer() {
+      var remote = best;
+      if (!remote) { console.log('[TOY·LINK] 拿不到版本指针，保持当前版本'); return; }
+      if (!newerThan(VERSION, remote)) { console.log('[TOY·LINK] 已是最新（线上 ' + remote + '）'); return; }
 
       console.log('[TOY·LINK] 发现新版 ' + remote + '（当前 ' + VERSION + '），准备更新');
       var file = 'TOY-LINK-' + remote + '.js';
@@ -7168,15 +7521,14 @@ textarea{
               try { toastr.info('TOY·LINK 已更新到 v' + remote + '，刷新页面生效', 'TOY·LINK'); } catch (e) { /* noop */ }
             } else {
               console.log('[TOY·LINK] 写回失败：' + where);
-            }          });
+            }
+          });
         }, function (e) {
           console.log('[TOY·LINK] 源失败 ' + url + '：' + ((e && e.message) || e));
           tryNext();
         });
       })();
-    }).catch(function (e) {
-      console.log('[TOY·LINK] 更新检查跳过：' + ((e && e.message) || e));
-    });
+    }
   }
 
   if (document.readyState === 'loading') {
