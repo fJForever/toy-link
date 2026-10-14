@@ -914,8 +914,8 @@ textarea{
         <input class="num" id="s-voicevol" type="number" min="0" max="100" step="5">
       </div>
       <div class="field">
-        <div class="lb"><b>启动时预热</b><small>装置启动后把每档固定的几句先合成好，用起来不卡。</small></div>
-        <div class="sw on" id="s-voicewarm"><i></i></div>
+        <div class="lb"><b>启动时预热</b><small>装置启动后把每档固定的几句先合成好，用起来不卡。<br>注意：这会真的发 5 次合成请求，按你所用平台正常计费 —— 想省额度就别开。</small></div>
+        <div class="sw" id="s-voicewarm"><i></i></div>
       </div>
     </section>
 
@@ -1359,7 +1359,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.22';
+  var VERSION = '1.13.23';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2428,7 +2428,8 @@ textarea{
     voiceAuto: true,     // 面板拿到新心声时自动播放
     voiceLog: true,      // 控制台打印语音失败原因，排错用
     voiceAI: false,      // 台词交给 AI 生成（随正文一起，不多花一次额度）；关掉则用本地台词库
-    voiceWarm: true,     // 启动装置时预热固定音集，用起来不卡
+    voiceWarm: false,    // 启动装置时预热固定音集 —— 会真的发 5 次合成请求（花额度），所以默认关
+    warmTouched: false,  // 用户是否亲手改过"启动时预热"。没碰过的人升级后走新默认（关）
     ttsProxy: 'http://127.0.0.1:8799/v1/tts',   // 本机转发地址
     /* direct：直连中转（默认）—— 只要中转自己开了跨域就能通，不需要任何本机脚本
        relay：经本机转发 —— 留作备份：中转没开跨域时用它绕开浏览器限制 */
@@ -6464,9 +6465,13 @@ textarea{
     el.addEventListener('click', function () {
       S[key] = !S[key];
       el.classList.toggle('on', S[key]);
+      // 预热开关碰过就记一笔：老存档里存的还是旧的 true，恢复时只对没碰过的人改成新默认
+      var touched = false;
+      if (key === 'voiceWarm') { S.warmTouched = true; touched = true; }
       persist();
       // 自动播放是唯一会"自己出声"的开关，切它的时候要把三处警示一起刷新
       if (key === 'voiceAuto') paintAutoWarn();
+      if (touched) persistSettingsFlags();
     });
   }
   voiceSwitch('#s-voiceauto', 'voiceAuto');
@@ -6680,6 +6685,15 @@ textarea{
     try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null') || {}; } catch (e) { return {}; }
   }
 
+  /* 只写"是否亲手碰过预热开关"这一个标记，两种存储都写一份 */
+  function persistSettingsFlags() {
+    var ls = lsLoad();
+    ls.toy_out_warmset = !!S.warmTouched;
+    lsSave(ls);
+    BRIDGE.setVars({ toy_out_warmset: !!S.warmTouched, toy_cfg_warmset: !!S.warmTouched }, 'global');
+    if (BRIDGE.ready) BRIDGE.setVars({ toy_cfg_warmset: !!S.warmTouched }, 'chat');
+  }
+
   /* A 类：与聊天无关的接口配置 */
   function persistGlobal() {
     var g = {
@@ -6797,7 +6811,9 @@ textarea{
     if (typeof g.toy_tts_langboost === 'boolean') S.ttsLangBoost = g.toy_tts_langboost;
     if (typeof g.toy_out_vol === 'number') S.voiceVol = clamp(g.toy_out_vol, 0, 100);
     if (typeof g.toy_out_auto === 'boolean') S.voiceAuto = g.toy_out_auto;
-    if (typeof g.toy_out_warm === 'boolean') S.voiceWarm = g.toy_out_warm;
+    /* 预热：只有用户亲手改过（toy_out_warmset）才沿用存档值。
+       老存档里存的是旧默认 true，直接用会替用户继续花额度，所以那种情况落回新默认 false。 */
+    if (g.toy_out_warmset === true) { S.warmTouched = true; if (typeof g.toy_out_warm === 'boolean') S.voiceWarm = g.toy_out_warm; }
     if (typeof g.toy_out_ai === 'boolean') S.voiceAI = g.toy_out_ai;
     if (typeof g.toy_out_haptap === 'boolean') S.hapticTap = g.toy_out_haptap;
     if (typeof g.toy_out_hapfol === 'boolean') S.hapticFollow = g.toy_out_hapfol;
@@ -6842,7 +6858,8 @@ textarea{
     if (typeof v.toy_cfg_voicevol === 'number') S.voiceVol = clamp(v.toy_cfg_voicevol, 0, 100);
     if (typeof v.toy_cfg_voiceauto === 'boolean') S.voiceAuto = v.toy_cfg_voiceauto;
     if (typeof v.toy_cfg_voiceai === 'boolean') S.voiceAI = v.toy_cfg_voiceai;
-    if (typeof v.toy_cfg_voicewarm === 'boolean') S.voiceWarm = v.toy_cfg_voicewarm;
+    if (typeof v.toy_cfg_warmset === 'boolean') S.warmTouched = v.toy_cfg_warmset;
+    if (S.warmTouched && typeof v.toy_cfg_voicewarm === 'boolean') S.voiceWarm = v.toy_cfg_voicewarm;
     if (typeof v.toy_cfg_proxy === 'string') S.ttsProxy = v.toy_cfg_proxy;
     // 传输方式与令牌。老聊天里没有这两个键，缺省保持 relay + 空令牌 ——
     // 也就是"升级后行为不变"，不会突然开始直连或凭空多出个密钥字段。
