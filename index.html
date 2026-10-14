@@ -1087,6 +1087,7 @@ textarea{
         <div class="row2">
           <select class="txt" id="s-platform" style="flex:1;min-width:0">
             <option value="fish">Fish Audio（主推）</option>
+            <option value="minimax">MiniMax 语音</option>
             <option value="openai">OpenAI 兼容</option>
             <option value="custom">其他 / 自定义协议</option>
           </select>
@@ -2957,10 +2958,11 @@ textarea{
         authstyle: S.ttsAuth || 'bearer',
         model: S.ttsModel || '',
         modelHdr: S.ttsModelHdr || 'model',
-        /* 音色字段名与音色字段是否发 model，都随平台走：
-           Fish 用 reference_id + model 头；OpenAI 用 voice 字段、不要 model 头。 */
+        /* 音色字段名与"要不要发 model 请求头"都随平台走：
+           Fish 用 reference_id + model 头；OpenAI 用 voice 字段、不要 model 头；
+           MiniMax 用 voice_id、模型名在请求体里，同样不需要 model 头。 */
         voiceField: (S.ttsPlatform === 'custom') ? (S.ttsRefField || 'reference_id') : p.voiceField,
-        noModelHdr: (S.ttsPlatform === 'openai') ? true : !!S.ttsNoModelHdr,
+        noModelHdr: (S.ttsPlatform === 'openai' || S.ttsPlatform === 'minimax') ? true : !!S.ttsNoModelHdr,
         extraRaw: S.ttsExtraHdrs || '',
         latency: S.ttsLatency || 'low',
         format: S.ttsFormat || 'mp3',
@@ -2974,6 +2976,99 @@ textarea{
       return p.req(c, text, vv);
     }
 
+    /* ---------- MiniMax 的 hex 音频解包 ----------
+       MiniMax T2A 返回 JSON：{ data: { audio: "<hex>", status: 2 },
+                                base_resp: { status_code: 0, status_msg: "success" } }
+       音频是十六进制字符串，得转回字节数组才喂得进播放器。
+       三个容易踩的点：
+         ① base_resp.status_code 才是成败判据 —— HTTP 200 也可能失败；
+         ② data 可能是 null（官方文档明说要判空）；
+         ③ 音频很长时 hex 串能到几十万字符，必须用 typed array 逐字节填，
+            别用 push/concat（那样会慢到卡住界面）。 */
+    function hexToBytes(hex) {
+      var s = String(hex || '').replace(/[\s\r\n]+/g, '');
+      if (s.length < 2) return null;
+      if (s.length % 2 !== 0) s = s.slice(0, -1);        // 奇数个字符：丢掉最后一个
+      var n = s.length >> 1;
+      var out = new Uint8Array(n);
+      for (var i = 0; i < n; i++) {
+        var b = parseInt(s.substr(i * 2, 2), 16);
+        if (isNaN(b)) { vlog('hex 音频里有非十六进制字符（第 ' + (i * 2) + ' 个字符），已中断', 'err'); return null; }
+        out[i] = b;
+      }
+      return out;
+    }
+
+    function parseMinimaxJSON(tx, ms) {
+      var j;
+      try { j = JSON.parse(String(tx || '')); }
+      catch (e) {
+        vlog('MiniMax 回的 JSON 解析不了：' + esc4(String(tx || '').slice(0, 160)), 'err');
+        throw new Error('MiniMax 回的 JSON 解析不了');
+      }
+      var br = j.base_resp || {};
+      if (br.status_code !== 0) {
+        var how = br.status_code === 1004 ? ' ← 鉴权失败，检查 API key'
+          : br.status_code === 1002 ? ' ← 触发限流（并发/配额）'
+            : br.status_code === 1039 ? ' ← TPM 限流：一分钟内字符数超了'
+              : br.status_code === 1001 ? ' ← 上游超时'
+                : br.status_code === 1042 ? ' ← 无效字符超过 10%，被拒'
+                  : br.status_code === 2013 ? ' ← 入参不合法（模型名/音色 ID 对不上？）' : '';
+        vlog('MiniMax 返回失败 ' + br.status_code + '：' + esc4(String(br.status_msg || '')) + how, 'err');
+        throw new Error('MiniMax ' + br.status_code + '：' + String(br.status_msg || ''));
+      }
+      var d = j.data;
+      if (!d) { vlog('MiniMax 回了 status_code=0 但没有 data（官方文档说这种情况要判空）', 'err'); throw new Error('MiniMax 没有返回音频数据'); }
+      var bytes = hexToBytes(d.audio);
+      if (!bytes || !bytes.length) { vlog('MiniMax 的 data.audio 是空的或不是合法 hex', 'err'); throw new Error('MiniMax 没有返回可用音频'); }
+      var ei = j.extra_info || {};
+      vlog('MiniMax 解包完成 ' + Math.round(bytes.length / 1024 * 10) / 10 + ' KB · ' + (ms || '?') + 'ms'
+        + (ei.audio_length ? ' · 音频 ' + (Math.round(ei.audio_length / 100) / 10) + ' 秒' : '')
+        + (ei.usage_characters ? ' · 计费 ' + ei.usage_characters + ' 字符' : ''), 'ok');
+      return bytes.buffer;
+    }
+
+    /* ---------- 送去合成前，标记怎么处理 ----------
+       多数平台（Fish、OpenAI）不认识方括号标记，念出来会变成噪音 —— 一律删掉。
+       MiniMax 是例外：它认「（全角括号）」的插词，而且官方只认固定一张表。
+       不在表里的（[whispering]、[颤抖] 这类）如果原样转过去会被当正文念出来，
+       所以只转换认识的，其余一律删 —— 宁可少一点语气，也不要念出噪音。
+       另外这张表只在 speech-2.8 系列上生效，换别的模型全删。 */
+    var MM_FX = {
+      '气声': 'breath', '喘息': 'pant', '抽气': 'gasps', '吸气': 'inhale', '呼气': 'exhale',
+      '笑': 'laughs', '轻笑': 'chuckle', '咳嗽': 'coughs', '清嗓': 'clear-throat',
+      '闷哼': 'groans', '抽鼻子': 'sniffs', '叹气': 'sighs', '鼻音': 'snorts',
+      '打嗝': 'burps', '咂嘴': 'lip-smacking', '哼': 'humming', '嘶声': 'hissing',
+      '沉吟': 'emm', '喷嚏': 'sneezes'
+    };
+    /* 官方支持的英文标记原样可用，一并放进白名单 */
+    ['laughs', 'chuckle', 'coughs', 'clear-throat', 'groans', 'breath', 'pant',
+      'inhale', 'exhale', 'gasps', 'sniffs', 'sighs', 'snorts', 'burps',
+      'lip-smacking', 'humming', 'hissing', 'emm', 'sneezes'].forEach(function (k) {
+      MM_FX[k] = k;
+    });
+
+    function stripMarks(s) { return String(s == null ? '' : s).replace(/\[[^\]]*\]\s*/g, ''); }
+
+    function miniMarks(s) {
+      var mdl = String(S.ttsModel || '');
+      if (mdl.indexOf('2.8') < 0) return stripMarks(s);   // 老模型不认插词，全删
+      return String(s == null ? '' : s).replace(/\[([^\]]+)\]/g, function (_, inner) {
+        var key = String(inner).trim();
+        var hit = MM_FX[key] || MM_FX[key.toLowerCase()];
+        return hit ? '（' + hit + '）' : ' ';
+      });
+    }
+
+    /* 一份台词送去合成前的清洗：去掉方括号标记（MiniMax 换成括号插词），多行并成一句 */
+    function speakText(plat, text) {
+      var one = (plat === 'minimax') ? miniMarks : stripMarks;
+      var s = String(text || '').split(/[\r\n]+/).map(function (l) { return one(l).trim(); })
+        .filter(Boolean).join('，');
+      if (!s) s = one(text).trim();
+      return s;
+    }
+
     function synth(text, voice) {
       var c = cfgNow();
       if (!c.target) { vlog('没填合成地址', 'err'); return Promise.reject(new Error('没填合成地址')); }
@@ -2985,15 +3080,12 @@ textarea{
       }
       var url = c.endpoint;
       var vv = voice || S.ttsVoice;
-      /* 多行台词原样送去合成（模型会按行/句切分），但每行的情绪标记要去掉 ——
-         标记是给我们看的、也是给模型的提示，念出来会变成噪音。 */
-      var speak = String(text || '').split(/[\r\n]+/).map(function (l) {
-        return l.replace(/\[[^\]]*\]\s*/g, '').trim();
-      }).filter(Boolean).join('，');
-      if (!speak) speak = String(text || '').replace(/\[[^\]]*\]\s*/g, '').trim();
+      /* 多行台词原样送去合成（模型会按行/句切分），但每行的情绪标记要先处理掉。
+         具体怎么处理见上面 speakText —— MiniMax 换括号、其余删掉。 */
+      var speak = speakText(c.plat, text);
       var k = vkey(text, vv);
       var t0 = Date.now();
-      vlog('请求 ' + esc4(String(text).slice(0, 34)) + ' · ' + nBytes(speak) + ' 字节 · '
+      vlog('请求 ' + esc4(String(text).slice(0, 34)) + ' · ' + esc4(speak.slice(0, 40)) + ' · ' + nBytes(speak) + ' 字节 · '
         + (c.transport === 'direct' ? '直连' : '经转发') + (vv ? ' · 音色 ' + vv : ' · 默认音色'), 'hi');
       return cached(k).then(function (hit) {
         if (hit && hit.blob) {
@@ -3044,6 +3136,13 @@ textarea{
           }
           var ct = r.headers.get('content-type') || '';
           if (ct.indexOf('json') >= 0) {
+            /* 有的平台就是回 JSON —— MiniMax 把音频塞在 data.audio 里、还是 hex 字符串。
+               这类走各自的解析函数；其余情况照旧按"不是音频"报错。
+               注意 content-type 有的是 text/plain（中转常这么干），所以下面还兜了一层：
+               真拿到 hex 文本也能认出来。 */
+            if (c.plat === 'minimax' || PLATFORMS[c.plat] && PLATFORMS[c.plat].resp === 'minimax') {
+              return r.text().then(function (tx) { return parseMinimaxJSON(tx, ms); });
+            }
             return r.text().then(function (tx) {
               vlog('上游回的是 JSON 不是音频：' + esc4(String(tx || '').slice(0, 160)), 'err');
               throw new Error('上游不是音频：' + String(tx || '').slice(0, 200));
@@ -3051,6 +3150,17 @@ textarea{
           }
           return r.arrayBuffer().then(function (buf) {
             if (timer) clearTimeout(timer);
+            /* 少数中转不带 content-type，直接把 JSON 当纯文本发回来。
+               这里认一下：开头是 { 就先按 JSON 试，失败再当音频。 */
+            if (c.plat === 'minimax' && buf && buf.byteLength > 2) {
+              var head = new Uint8Array(buf, 0, 1);
+              if (head[0] === 0x7B) {   // '{'
+                try {
+                  var txt = new TextDecoder('utf-8').decode(buf);
+                  return parseMinimaxJSON(txt, ms);
+                } catch (e) { /* 认错了，继续当音频处理 */ }
+              }
+            }
             var total = Date.now() - t0;
             var kb = buf ? Math.round(buf.byteLength / 1024 * 10) / 10 : 0;
             vlog('收到音频 ' + kb + ' KB · ' + total + 'ms · ' + (ct || '无类型'), 'ok');
@@ -6122,6 +6232,40 @@ textarea{
         return b;
       }
     },
+    /* MiniMax（T2A v2）。和上面两家最大的不同有两点：
+       ① 它返回的是 **JSON**，音频藏在 `data.audio` 里、还是 **hex 编码**的字符串，
+          不是音频二进制 —— 所以要靠 resp:'minimax' 走另一条解析路径；
+       ② 情绪/喘息的写法是**全角括号**（气声）（pant），不是 [方括号]。
+          官方还只在 speech-2.8 系列上支持这类插词，其余模型会把它当正文念出来，
+          所以标记转不转要跟着模型名走。 */
+    minimax: {
+      name: 'MiniMax 语音',
+      lib: 'https://platform.minimax.io/',
+      libHint: '开放平台的音色列表（System Voice ID List）里复制 voice_id，'
+        + '形如 Chinese (Mandarin)_Lyrical_Voice、English_Graceful_Lady',
+      voiceField: 'voice_id',
+      voiceHint: '填 voice_id（如 Chinese (Mandarin)_Lyrical_Voice / English_Graceful_Lady），'
+        + '不是十六进制',
+      note: '走 <code>POST /v1/t2a_v2</code>，鉴权只要 <code>Authorization: Bearer &lt;API key&gt;</code>'
+        + '（不需要 GroupId）。<br>音色填 voice_id。'
+        + '<b>情绪标记只在 speech-2.8-hd / speech-2.8-turbo 上生效</b>：'
+        + '换成别的模型（speech-2.6 / speech-02 / speech-01）时面板会自动把标记去掉 ——'
+        + '否则它们会被当正文念出来。',
+      resp: 'minimax',
+      req: function (c, text, vv) {
+        var b = {
+          model: c.model || 'speech-2.8-turbo',
+          text: text,
+          stream: false,
+          language_boost: 'auto',     // 中英混排都能认；不设的话中文场景偶有偏差
+          output_format: 'hex',       // 官方默认就是 hex，这里写明免得以后默认值变了
+          voice_setting: { speed: c.speed, vol: 1, pitch: 0 },
+          audio_setting: { format: c.format || 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 }
+        };
+        if (vv) b.voice_setting.voice_id = vv;
+        return b;
+      }
+    },
     custom: {
       name: '其他 / 自定义协议',
       lib: 'https://fish.audio/app/',
@@ -7609,7 +7753,7 @@ textarea{
     if (typeof v.toy_cfg_nomodel === 'boolean') S.ttsNoModelHdr = v.toy_cfg_nomodel;
     if (typeof v.toy_cfg_extra === 'string') S.ttsExtraHdrs = v.toy_cfg_extra;
     if (['low', 'balanced', 'normal'].indexOf(v.toy_cfg_latency) >= 0) S.ttsLatency = v.toy_cfg_latency;
-    if (['fish', 'openai', 'custom'].indexOf(v.toy_cfg_platform) >= 0) S.ttsPlatform = v.toy_cfg_platform;
+    if (['fish', 'openai', 'minimax', 'custom'].indexOf(v.toy_cfg_platform) >= 0) S.ttsPlatform = v.toy_cfg_platform;
     if (typeof v.toy_cfg_langboost === 'boolean') S.ttsLangBoost = v.toy_cfg_langboost;
     if (typeof v.toy_cfg_target_url === 'string') S.ttsTarget = v.toy_cfg_target_url;
     if (typeof v.toy_cfg_ttsvoice === 'string') S.ttsVoice = v.toy_cfg_ttsvoice;    // 旧存档里的 toy_cfg_ttsvoicet（调教音色）已废弃：音色合并成一套，读到了也不采用
