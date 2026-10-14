@@ -341,16 +341,24 @@ button{border:0;background:none;cursor:pointer}
 .phase-head .full-mark[hidden]{display:none}
 
 /* ---------- 「贴上 / 拿起」----------
-   只剩这一颗，所以给它一个适中的宽度，不铺满整行。 */
+   并排两颗、等宽平分。选中的那颗用琥珀色框出来（和主题里的警示色一套），
+   一眼能看出装置现在是在身上还是已经被拿走了。 */
 .gate{display:flex;gap:8px;margin:10px 0 2px}
 .gate button{
-  flex:0 1 46%;min-width:120px;padding:9px 6px;border-radius:11px;cursor:pointer;
-  font-size:12px;letter-spacing:.08em;font-family:inherit;
+  flex:1 1 0;min-width:0;padding:9px 6px;border-radius:11px;cursor:pointer;
+  font-size:12.5px;letter-spacing:.08em;font-family:inherit;
   border:1px solid var(--line);background:rgba(238,222,242,.03);color:var(--dim);
-  transition:border-color .18s,background .18s,color .18s,opacity .18s;
+  transition:border-color .18s,background .18s,color .18s,opacity .18s,box-shadow .18s;
 }
 .gate button:active{transform:scale(.98)}
-#btn-hold.on{border-color:var(--cyan-a40);background:var(--cyan-a08);color:var(--cyan)}
+/* 选中态：琥珀色描边 + 淡底 + 字色跟上 + 一点点外发光，够醒目但不刺眼 */
+.gate button.on{
+  border-color:var(--amber);
+  background:rgba(235,168,102,.14);
+  color:#f6dfc2;
+  box-shadow:0 0 0 1px rgba(235,168,102,.35), 0 4px 14px rgba(235,168,102,.12);
+  font-weight:700;
+}
 
 /* ---------- 模式锁定：临界 / 冲刺 还没到阶段 ----------
    虚化 + 斜线，一眼看出"这个档还不能用"。刻意不用 disabled：
@@ -872,13 +880,12 @@ textarea{
       <div class="phase"><i></i></div>
     </div>
 
-    <!-- 「贴上 / 拿起」写的是点下去会发生什么：
-         装置贴着时显示「拿起」，点它就把装置拿起来（阶段值停止累积）；
-         拿起来之后显示「贴上」，点它重新贴回去（阶段值继续涨）。
-         （「临界」「冲刺」不在这儿 —— 它们是震动模式里的两个档，
-          按阶段解锁，见下面「震动模式」那一栏。） -->
+    <!-- 装置在不在身上：左「贴上」、右「拿起」，并排两颗，选中的用琥珀色框出来。
+         贴上 = 刺激在走、阶段值累积；拿起 = 刺激停下、阶段值冻结。
+         （「临界」「冲刺」不在这儿 —— 它们是震动模式里的两个档，按阶段解锁。） -->
     <div class="gate">
-      <button type="button" id="btn-hold">拿起</button>
+      <button type="button" id="btn-put">贴上</button>
+      <button type="button" id="btn-take">拿起</button>
     </div>
 
     <section class="panel">
@@ -3345,26 +3352,25 @@ textarea{
     toast('阶段值已满', 2600);
   }
 
-  /* 「贴上 / 拿起」开关。
-     按钮上写的是**点下去会发生什么**（动作），不是当前状态：
-       装置还贴着 → 按钮显示「拿起」，点它就把装置拿起来
-     　装置已拿起 → 按钮显示「贴上」，点它就把装置贴回去
-     两个状态的切换就是这一个物理事实：装置还在不在身上。
+  /* 「贴上 / 拿起」——并排两颗，选中的那颗框出来。
+     它们描述的是同一个物理事实：装置还在不在身上。
        贴上 —— 装置在，刺激在走，阶段值照常累积
-       拿起 —— 装置被拿走，刺激停下，阶段值不再增加 */
-  $('#btn-hold').addEventListener('click', function () {
-    S.hold = !S.hold;
-    this.classList.toggle('on', S.hold);
-    this.textContent = S.hold ? '拿起' : '贴上';   // 动作：当前贴着就提示"拿起"
-    S.lastEvent = S.hold ? '重新贴上，阶段值继续累积' : '把装置拿起来，刺激停下，阶段值不再增加';
-    toast(S.hold ? '贴上：装置还贴着，阶段值继续上涨' : '拿起：装置已离开，阶段值不再增加');
-    render();
+       拿起 —— 装置被拿走，刺激停下，阶段值不再增加
+     点已经选中的那颗不做任何事（不来回切），避免"连点两下就回去了"的意外。 */
+  function setHold(on) {
+    if (on === S.hold) return;
+    S.hold = on;
+    S.lastEvent = on ? '重新贴上，阶段值继续累积' : '把装置拿起来，刺激停下，阶段值不再增加';
+    toast(on ? '贴上：装置还贴着，阶段值继续上涨' : '拿起：装置已离开，阶段值不再增加');
+    render();          // 里面会调 paintHold()，两颗的选中态一起刷新
     pushAction(act(
-      S.hold ? '把装置重新贴回去，继续刺激' : '把装置拿起来，先停一会儿',
-      S.hold ? '重新贴上装置，继续刺激' : '把装置拿起来'));
+      on ? '把装置重新贴回去，继续刺激' : '把装置拿起来，先停一会儿',
+      on ? '重新贴上装置，继续刺激' : '把装置拿起来'));
     persist();
     if (S.auto) react('mode');
-  });
+  }
+  $('#btn-put').addEventListener('click', function () { setHold(true); });
+  $('#btn-take').addEventListener('click', function () { setHold(false); });
 
   /* 「临界」和「冲刺」的解锁在「震动模式」那一栏里处理（见 paintModeLocks）。
      它们本来就是九种模式中的两个档，不该另做一颗按钮 —— 那样同一件事有两个入口，
@@ -3381,15 +3387,17 @@ textarea{
     })();
   }
 
-  /* 按钮上是动作：装置贴着时显示「拿起」，已拿起时显示「贴上」 */
+  /* 两颗一起刷新：贴着时「贴上」亮，拿起来了时「拿起」亮 */
   function paintHold() {
-    var b = gateEl('btn-hold');
-    if (!b) return;
-    b.classList.toggle('on', S.hold);
-    b.textContent = S.hold ? '拿起' : '贴上';
-    b.title = S.hold
-      ? '装置还贴着，阶段值在涨。点它就等于把装置拿起来'
-      : '装置已经拿起来了，阶段值不再增加。点它就是重新贴上';
+    var put = gateEl('btn-put'), take = gateEl('btn-take');
+    if (put) {
+      put.classList.toggle('on', !!S.hold);
+      put.title = S.hold ? '装置现在还贴着（阶段值在涨）' : '点它把装置贴回去，阶段值继续累积';
+    }
+    if (take) {
+      take.classList.toggle('on', !S.hold);
+      take.title = S.hold ? '点它把装置拿起来，阶段值不再增加' : '装置已经拿起来了（阶段值冻结）';
+    }
   }
 
   /* 「临界」「冲刺」的解锁由阶段值直接决定：
