@@ -453,22 +453,133 @@ input[type=range]::-moz-range-thumb{
 .tab b{display:block;font-size:16px;font-weight:400;margin-bottom:3px}
 .tab.on b{color:var(--cyan)}
 
-/* ---------- 对话流 ---------- */
-.say{
-  position:sticky;top:0;z-index:4;display:flex;gap:8px;
-  padding:7px 0 11px;
-  background:linear-gradient(180deg,rgba(13,7,11,.97) 30%,rgba(13,7,11,.72) 78%,rgba(13,7,11,0));
+/* ---------- 反应流 ----------
+   顶部那条是「语音重写栏」：不对 TA 说话，只指挥这一句台词怎么念。 */
+.relay{
+  position:sticky;top:0;z-index:4;
+  margin:0 0 12px;padding:9px 10px;border-radius:14px;
+  border:1px solid var(--line);background:var(--card-2);
+  backdrop-filter:blur(10px);
 }
-.say input{
-  flex:1;min-width:0;padding:11px 14px;border-radius:12px;font-size:16px;
-  border:1px solid var(--line);background:rgba(0,0,0,.42);outline:none;
+.relay .rtarget{
+  font-size:10.5px;color:var(--dim-2);letter-spacing:.03em;
+  margin:0 2px 7px;line-height:1.5;
 }
-.say input:focus{border-color:var(--hot-a55)}
-.say button{
-  flex:none;padding:0 18px;border-radius:12px;font-size:13px;font-weight:700;color:#fbf6f0;
-  background:linear-gradient(160deg,var(--hot) -35%,var(--hot-deep) 90%);
+.relay .rtarget b{color:var(--cyan);font-weight:600}
+.relay .rtarget.on{color:var(--dim)}
+.relay .rrow{display:flex;gap:8px}
+.relay input{
+  flex:1;min-width:0;padding:10px 13px;border-radius:11px;font-size:15px;
+  border:1px solid var(--line);background:rgba(0,0,0,.42);color:var(--text);outline:none;
 }
-.say button:active{transform:scale(.96)}
+.relay input:focus{border-color:var(--hot-a55)}
+.relay input:disabled{opacity:.5}
+.relay button{
+  flex:none;padding:0 15px;border-radius:11px;font-size:12.5px;font-weight:700;
+  color:#fbf6f0;background:linear-gradient(160deg,var(--hot) -35%,var(--hot-deep) 90%);
+}
+.relay button:active{transform:scale(.96)}
+.relay button:disabled{
+  background:var(--card);color:var(--dim-2);border:1px solid var(--line);font-weight:600;
+}
+.relay .rmini{
+  flex:none;padding:6px 11px;border-radius:999px;font-size:11px;font-weight:600;
+  background:transparent;color:var(--dim);border:1px solid var(--line);
+}
+.relay .rmini:active{transform:scale(.96)}
+
+/* ---------- 语音页：合成记录 ----------
+   条目多，所以做成一页六条 + 翻页；每条只留「播 / 存」两个动作，不堆控件。 */
+.recbar{
+  display:flex;align-items:center;gap:8px;margin-bottom:9px;
+  font-size:10.5px;color:var(--dim-2);
+}
+.recbar span{flex:1;min-width:0}
+.recbar .rmini{
+  flex:none;padding:5px 10px;border-radius:999px;font-size:10.5px;font-weight:600;
+  background:transparent;color:var(--dim);border:1px solid var(--line);
+}
+.recbar .rmini:active{transform:scale(.96)}
+.recbar .rmini:disabled{opacity:.4}
+.reclist{display:flex;flex-direction:column;gap:7px}
+.recl{
+  display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:11px;
+  border:1px solid var(--line);background:rgba(0,0,0,.22);
+}
+.recl .m{flex:1;min-width:0}
+.recl .t{
+  font-size:12.5px;color:var(--text);line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.recl .s{
+  font-size:10px;color:var(--dim-2);margin-top:3px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.recl .b{
+  flex:none;padding:6px 10px;border-radius:9px;font-size:11px;font-weight:600;
+  border:1px solid var(--line);background:rgba(238,222,242,.05);color:var(--dim);
+}
+.recl .b:active{transform:scale(.95)}
+.recl .b.on{border-color:var(--hot);color:var(--hot-2);background:var(--hot-a12)}
+
+/* ---------- 语音页：高级项折叠 ----------
+   请求头名、音色字段名这些平时不该出现在主流程里，折叠起来，
+   但遇到"说不清原因的 400"要有个明确的地方去对。 */
+.adv{margin:12px 0 4px;border-top:1px solid var(--line);padding-top:11px}
+.adv>summary{
+  font-size:12px;color:var(--dim);letter-spacing:.03em;cursor:pointer;
+  list-style:none;padding:3px 0;
+}
+.adv>summary::-webkit-details-marker{display:none}
+.adv>summary::before{content:"▸ ";color:var(--cyan)}
+.adv[open]>summary::before{content:"▾ "}
+.adv>.inner{padding-top:11px}
+
+/* ---------- 语音页：语气符号模板 ----------
+   标签按类分组，点一下复制到剪贴板。做成小方块而不是长条，
+   因为要一眼扫完十几个符号；中文标签比英文宽，用 auto 宽度让它自己撑。 */
+.tagsec{margin-top:13px}
+.taghead{
+  display:flex;align-items:baseline;gap:8px;
+  font-size:10.5px;color:var(--dim);letter-spacing:.08em;margin:11px 0 6px;
+}
+.taghead span{font-size:10px;color:var(--dim-2);letter-spacing:0}
+.tagrow{display:flex;flex-wrap:wrap;gap:6px}
+.tag{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;padding:5px 9px;border-radius:8px;
+  border:1px solid var(--line-2);background:rgba(238,222,242,.045);
+  color:var(--cyan);cursor:pointer;white-space:nowrap;
+  transition:border-color .15s,background .15s,transform .12s;
+}
+.tag:hover{border-color:var(--hot);color:var(--hot-2)}
+.tag:active{transform:scale(.94)}
+.tag b{
+  font-family:var(--font);font-weight:500;font-size:10px;
+  color:var(--dim-2);margin-left:6px;
+}
+.tag.ok{border-color:#5fd08e;color:#a8e8c2;background:rgba(95,208,142,.12)}
+
+/* ---------- 语音页的运行日志 ----------
+   等宽小字、能滚、滚到底自动跟着走。四种颜色对应 正常/提示/警告/失败。 */
+.vlog{
+  height:150px;overflow:auto;padding:8px 9px;border-radius:11px;
+  border:1px solid var(--line);background:rgba(0,0,0,.45);
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:10.5px;line-height:1.65;color:var(--dim);
+}
+.vlog .lg{display:flex;gap:7px;align-items:baseline}
+.vlog .lg i{flex:none;color:var(--dim-2);font-style:normal;letter-spacing:-.02em}
+.vlog .lg.ok{color:#8fd6a6}
+.vlog .lg.err{color:#f0908a}
+.vlog .lg.warn{color:var(--amber)}
+.vlog .lg.hi{color:var(--cyan)}
+.vlog .lg.step{color:var(--dim-2)}
+.vlog .lgdim{color:var(--dim-2)}
+.vlog::-webkit-scrollbar{width:5px}
+.vlog::-webkit-scrollbar-thumb{background:rgba(232,214,236,.18);border-radius:3px}
+
 .feed{display:flex;flex-direction:column;gap:12px;padding:4px 0 8px}
 .feed-empty{
   text-align:center;color:var(--dim-2);font-size:12px;line-height:2;
@@ -491,6 +602,33 @@ input[type=range]::-moz-range-thumb{
 }
 .msg.now .bubble{box-shadow:0 0 0 1px var(--cyan-a40)}
 .blink::after{content:"▍";color:var(--cyan);animation:pulse 1s infinite}
+/* 被选中准备重写的那一条：主色描边，一眼看出改的是谁 */
+.msg.relay-on .bubble{box-shadow:0 0 0 2px var(--hot-a55)}
+.msg.relay-on .who{color:var(--hot-2)}
+
+/* ---------- 心声里的语音条 ----------
+   气泡里分两层：.vline 是要念出来的台词（带情绪标记），
+   .sub 是下面那行给眼睛看的说明文字 —— 一眼能分清哪句会出声。 */
+.bubble .vline{
+  font-size:14.5px;line-height:1.7;color:var(--text);
+  letter-spacing:.01em;word-break:break-word;
+}
+.bubble .sub{
+  display:block;margin-top:6px;padding-top:5px;
+  border-top:1px dashed var(--line);font-size:11px;color:var(--dim-2);line-height:1.5;
+}
+.vbar{display:flex;gap:8px;margin-top:7px}
+.vplay{
+  padding:6px 12px;border-radius:999px;font-size:11.5px;letter-spacing:.04em;
+  border:1px solid var(--line);background:rgba(238,222,242,.05);color:var(--dim);
+  display:flex;align-items:center;gap:6px;
+}
+.vplay .ico{color:var(--cyan);font-size:10px}
+.vplay:active{transform:scale(.97)}
+.vplay.on{border-color:var(--hot);color:var(--hot-2);background:var(--hot-a12)}
+.vplay.on .ico{color:var(--hot-2)}
+/* 标记本身是给机器读的，界面上压暗一点，别抢台词的视线 */
+.bubble .vline::first-line{}
 
 /* ---------- 设置页 ---------- */
 .field{
@@ -528,6 +666,17 @@ input[type=range]::-moz-range-thumb{
 }
 .txt::placeholder{color:var(--dim-2);opacity:1}
 .txt:focus{border-color:var(--hot-a55)}
+/* 令牌框：按密码输入，右侧一个「显示」可以临时看明文（粘贴时确认有没有截断） */
+.txt-wrap{position:relative;width:100%}
+.txt-wrap .txt{padding-right:52px}
+.eye{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  padding:5px 9px;border-radius:8px;font-size:11px;font-weight:600;
+  color:var(--dim);border:1px solid var(--line);background:rgba(0,0,0,.35);
+  letter-spacing:.04em;
+}
+.eye:active{transform:translateY(-50%) scale(.95)}
+.eye.on{color:var(--hot-2);border-color:var(--hot-a45)}
 /* 标签在上、选项一排在下的设置项（装置形态） */
 .field.col{flex-direction:column;align-items:stretch;gap:0}
 .field.col .chips{margin-top:10px}
@@ -668,17 +817,250 @@ textarea{
     </section>
   </main>
 
-  <!-- ============ 反应页 ============ -->
+  <!-- ============ 反应页 ============
+       这一页是纯展示：文字 + 语音播放。不对 TA 说话（要说就在酒馆的输入框里说），
+       所以没有输入栏 —— 少了输入栏，整页的高度都留给反应本身。 -->
   <main class="stage" id="v-chat" hidden>
-    <form class="say" id="say-form" autocomplete="off">
-      <input id="say-input" type="text" placeholder="对 TA 说点什么…" enterkeyhint="send">
-      <button type="submit">发送</button>
+    <!-- 语音重写栏：不对 TA 说话，只用来指挥"这一句台词该怎么念"。
+         每一条反应下面都有「✎ 重写这句」，点它会把目标挂到这里。 -->
+    <form class="relay" id="relay-form" autocomplete="off">
+      <div class="rtarget" id="relay-target">没选目标 · 点下面任意一条的「✎ 重写这句」</div>
+      <div class="rrow">
+        <input id="relay-input" type="text" placeholder="你想要 TA 怎么喘…（例如：语速更慢一点、话再多一点）" enterkeyhint="send" disabled>
+        <button type="submit" id="relay-go" disabled>重新生成</button>
+      </div>
+      <div class="rrow" style="margin-top:6px">
+        <button type="button" class="rmini" id="relay-revert" hidden>还原这句话</button>
+        <button type="button" class="rmini" id="relay-cancel" hidden>取消选中</button>
+      </div>
     </form>
     <div class="feed" id="feed">
       <div class="feed-empty">
-        还没有心声<br>装置跑起来之后，TA 心里在想什么会显示在这里
-      </div>
+        还没有声音<br>装置跑起来之后，TA 会发出什么声音会显示在这里</div>
     </div>
+  </main>
+
+  <!-- ============ 语音设置页 ============
+       参考本地那个独立试音台（工具-TTS试音台.html）重做进面板：
+       连接、音色、合成参数、试听、缓存，都收在这一页。
+       设置页只留开关（是否出声），调试性质的东西不放那儿。 -->
+  <main class="stage" id="v-voice" hidden>
+    <section class="panel">
+      <h3>语音状态<span class="tag" id="vs-tag"></span></h3>
+      <div class="hint" id="vs-line">—</div>
+      <div class="chips">
+        <button class="chip" id="s-voice">关</button>
+        <button class="chip" id="c-voice-test">试听一句</button>
+      </div>
+      <div class="field" style="border-top:1px solid var(--line);margin-top:12px">
+        <div class="lb"><b>自动播放</b><small>面板拿到新反应时直接念出来。关掉则每条下面仍可手动点播放。</small></div>
+        <div class="sw on" id="s-voiceauto"><i></i></div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>语音音量</b><small>相对装置音的响度。</small></div>
+        <input class="num" id="s-voicevol" type="number" min="0" max="100" step="5">
+      </div>
+      <div class="field">
+        <div class="lb"><b>启动时预热</b><small>装置启动后把每档固定的几句先合成好，用起来不卡。</small></div>
+        <div class="sw on" id="s-voicewarm"><i></i></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>连接</h3>
+      <div class="field">
+        <div class="lb"><b>传输方式</b><small id="s-transport-note"></small></div>
+        <button class="mini" id="s-transport">经本机转发</button>
+      </div>
+      <div class="field col">
+        <div class="lb"><b>合成地址</b><small>中转的完整接口地址，例如 <code>https://你的中转域名/v1/tts</code>。<br>两种传输方式都用它 —— 经转发时由转发脚本打到这儿，直连时面板自己打。</small></div>
+        <input class="txt" id="s-tts-target" type="text" placeholder="https://你的中转域名/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+      </div>
+      <div id="s-relay-box">
+        <div class="field col">
+          <div class="lb"><b>转发地址</b><small>本机转发脚本的地址。先在命令行跑 <code>node 工具-转发.js</code>。令牌填在脚本那边（<code>relay-key.txt</code>），面板里不存。</small></div>
+          <input class="txt" id="s-tts-proxy" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+        </div>
+      </div>
+      <div id="s-direct-box">
+        <div class="field col">
+          <div class="lb"><b>令牌</b><small><b style="color:var(--amber)">直连才需要填。</b>按密码处理：输入时是遮住的，右边可以临时看一眼。它会随聊天变量存进这个聊天文件里。</small></div>
+          <div class="txt-wrap">
+            <input class="txt" id="s-tts-key" type="password" placeholder="中转给你的 API Key" autocomplete="new-password" spellcheck="false" enterkeyhint="done" style="width:100%">
+            <button type="button" class="eye" id="c-eye-key" aria-label="显示或隐藏令牌">显示</button>
+          </div>
+        </div>
+        <div class="field">
+          <div class="lb"><b>鉴权方式</b><small>中转不走标准 Bearer 时改这里。</small></div>
+          <button class="mini" id="s-tts-authstyle">Bearer</button>
+        </div>
+      </div>
+
+      <details class="adv">
+        <summary>高级：请求头与字段名（中转不按标准协议时改这里）</summary>
+        <div class="inner">
+          <div class="hint" style="margin-top:0;margin-bottom:10px">
+            不同中转对"模型放哪个头、音色字段叫什么"的要求不一样。遇到说不清原因的
+            400 / 422，先来这里对一遍 —— 这几项保持默认就是标准协议。
+          </div>
+          <div class="field col">
+            <div class="lb"><b>额外请求头</b><small>JSON，例如 <code>{"X-Token":"xxx"}</code>。中转要求带自定义头时填这儿。</small></div>
+            <input class="txt" id="s-tts-extra" type="text" placeholder='留空即可' autocomplete="off" spellcheck="false" style="width:100%">
+          </div>
+          <div class="field">
+            <div class="lb"><b>模型头名</b><small>标准是 <code>model</code>。</small></div>
+            <input class="txt" id="s-tts-modelhdr" type="text" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <div class="lb"><b>音色字段名</b><small>标准是 <code>reference_id</code>。</small></div>
+            <input class="txt" id="s-tts-reffield" type="text" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field">
+            <div class="lb"><b>延迟档（latency）</b><small>low 最快、normal 质量最好但慢。</small></div>
+            <button class="mini" id="s-tts-latency">low</button>
+          </div>
+          <div class="field">
+            <div class="lb"><b>不发 model 头</b><small>中转不认这个头时打开。</small></div>
+            <div class="sw" id="s-tts-nomodel"><i></i></div>
+          </div>
+        </div>
+      </details>
+
+      <div class="chips">
+        <button class="chip" id="c-voice-ping">连通性检查</button>
+        <button class="chip" id="c-voice-ping2">两种方式都试一次</button>
+      </div>
+      <div class="hint" id="s-conn-hint"></div>
+    </section>
+
+    <section class="panel">
+      <h3>运行日志<span class="tag" id="vs-log-tag"></span></h3>
+      <div class="hint" style="margin-top:0;margin-bottom:8px">
+        面板里看不到 console，这一栏就是排错入口：哪一句发出去了、打到哪、几毫秒、多大、缓存中没中。
+      </div>
+      <div id="vs-log" class="vlog"><div class="lgdim">（还没有记录）</div></div>
+      <div class="chips">
+        <button class="chip" id="c-log-copy">复制日志</button>
+        <button class="chip" id="c-log-clear">清空日志</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>音色与合成参数</h3>
+      <div class="field col">
+        <div class="lb"><b>角色音色</b><small>整个角色的声音都用它 —— 呻吟、调教对白、自己玩的气音都是同一个人，不需要分开配。</small></div>
+        <input class="txt" id="s-tts-voice" type="text" placeholder="reference_id" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+      </div>
+      <div class="field">
+        <div class="lb"><b>模型</b><small>按中转支持的模型名填。</small></div>
+        <input class="txt" id="s-tts-model" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done">
+      </div>
+      <div class="field">
+        <div class="lb"><b>格式</b><small>mp3 最通用；wav 音质好、体积大；opus 体积最小。</small></div>
+        <button class="mini" id="s-tts-format">mp3</button>
+      </div>
+      <div class="field">
+        <div class="lb"><b>语速</b><small>0.7-1.2 比较自然。太快会把气声吞掉。</small></div>
+        <input class="num" id="s-tts-speed" type="number" min="0.5" max="1.5" step="0.05">
+      </div>
+      <div class="field">
+        <div class="lb"><b>台词来源</b><small id="s-voiceai-note"></small></div>
+        <button class="mini" id="s-voiceai">台词库</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>试听与缓存</h3>
+      <div class="chips" style="margin-top:0">
+        <button class="chip" id="c-voice-warm">预热音集</button>
+        <button class="chip" id="c-voice-clear">清空语音缓存</button>
+      </div>
+      <div class="hint" id="vs-hint">语音目前是关的。打开「TTS 语音」需要先跑转发脚本并填合成地址。</div>
+    </section>
+
+    <section class="panel">
+      <h3>试听<span class="tag" id="vs-text-tag"></span></h3>
+      <div class="hint" style="margin-top:0;margin-bottom:10px">
+        从<b>台词库</b>里挑一句来试音色 —— 换音色、改语速之后用它对比最省事，
+        不用等装置跑起来。库里的句子都自动带情绪标记，念出来就是它本来的样子。
+      </div>
+      <div class="field col">
+        <div class="lb"><b>台词分类</b></div>
+        <select class="txt" id="s-voice-kind" style="width:100%"></select>
+      </div>
+      <div class="field col">
+        <div class="lb"><b>档位</b><small id="s-voice-stage-note"></small></div>
+        <select class="txt" id="s-voice-stage" style="width:100%"></select>
+      </div>
+      <div class="field col">
+        <div class="lb"><b>句子</b></div>
+        <select class="txt" id="s-voice-line" style="width:100%"></select>
+      </div>
+      <div class="chips">
+        <button class="chip" id="c-preview-line">试听这一句</button>
+        <button class="chip" id="c-preview-next">换一句</button>
+      </div>
+      <div class="hint" id="vs-preview-note">—</div>
+    </section>
+
+    <section class="panel">
+      <h3>自定义试听<span class="tag" id="vs-custom-tag"></span></h3>
+      <div class="hint" style="margin-top:0;margin-bottom:10px">
+        自己写一段送去合成，用来试音色、试语速最直接。开头先放一个<b>语气符号</b>（方括号），
+        后面的字才会按那个语气念出来。
+      </div>
+      <textarea id="s-custom-text" spellcheck="false" style="min-height:64px;margin-top:0"
+        placeholder="[panting] 哈啊……不、不行……">[panting] 哈啊……不、不行……</textarea>
+      <div class="row2" style="margin-top:9px">
+        <button class="chip" id="c-custom-say">试听这段</button>
+        <button class="chip" id="c-custom-clear">清空</button>
+        <button class="chip" id="c-custom-len">0 字</button>
+      </div>
+
+      <div class="tagsec">
+        <div class="taghead">音效<span>喘 / 哭 / 笑 / 叹，直接放句首</span></div>
+        <div class="tagrow" id="tag-fx"></div>
+        <div class="taghead">情绪</div>
+        <div class="tagrow" id="tag-emo"></div>
+        <div class="taghead">语调</div>
+        <div class="tagrow" id="tag-tone"></div>
+        <div class="taghead">中文描述<span>官方允许括号里写自然语言，不限于固定表</span></div>
+        <div class="tagrow" id="tag-cn"></div>
+        <div class="taghead">停顿</div>
+        <div class="tagrow" id="tag-pause"></div>
+      </div>
+      <div class="hint">点一下<b>复制</b>该符号（会弹提示，粘到文本框里用）。一句最多叠 3 个，放在句子最前面最有效。</div>
+    </section>
+
+    <section class="panel">
+      <h3>合成记录<span class="tag" id="vs-list-count"></span></h3>
+      <div class="hint" style="margin-top:0;margin-bottom:8px">
+        每合成一句都会留在这里（含装置自动说话的），可以单条播放、单条下载，也能打包带走。
+        分页显示，一页 6 条。
+      </div>
+      <div class="recbar">
+        <span id="vs-page-info">共 0 条</span>
+        <button class="rmini" id="c-page-prev">上一页</button>
+        <button class="rmini" id="c-page-next">下一页</button>
+      </div>
+      <div class="reclist" id="vs-list"><div class="lgdim" style="padding:10px 0">（还没有合成记录）</div></div>
+      <div class="chips">
+        <button class="chip" id="c-audio-zip">打包下载</button>
+        <button class="chip" id="c-audio-clear">清空记录</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h3>振动音<span class="tag">未测试 · 慎用</span></h3>
+      <div class="hint" style="margin-top:0">
+        <b>这一档还没在真机上听过</b>，参数只验证到「代码能跑、数值合法」。它是纯 Web Audio
+        实时合成，不联网、不花钱，频率与强度直接跟着装置走。
+        <br><br>
+        做法是真实低频垫底（听不出来，但会让机身轻震）+ 谐波放在手机能出声的频段，
+        靠听觉补出低沉嗡鸣；吸吮式会自动压低低通，听感更闷更贴。
+        在语音开关里选中它才生效。
+      </div>
+    </section>
   </main>
 
   <!-- ============ 设置页 ============ -->
@@ -799,6 +1181,18 @@ textarea{
     </section>
 
     <section class="panel">
+      <h3>语音<span class="tag" id="voice-tag"></span></h3>
+      <div class="hint" id="voice-hint" style="margin-top:0">语音目前是关的。</div>
+      <div class="chips">
+        <button class="chip" id="c-goto-voice">打开语音设置 →</button>
+      </div>
+      <div class="hint">
+        开关、音色、合成地址、试听、缓存全在<b>语音设置</b>页里 —— 这一页只放一个入口。
+        <br>要出声只需两样：<b>合成地址</b>与<b>令牌</b>，都填在语音设置页。不需要命令行。
+      </div>
+    </section>
+
+    <section class="panel">
       <h3>状态快照（角色能看到的内容）</h3>
       <textarea id="state-box" readonly></textarea>
       <div class="hint">
@@ -839,7 +1233,8 @@ textarea{
 
   <nav class="dock">
     <button class="tab on" data-go="device"><b>◈</b>装置</button>
-    <button class="tab" data-go="chat"><b>❖</b>TA 的心声</button>
+    <button class="tab" data-go="chat"><b>❖</b>TA 的声音</button>
+    <button class="tab" data-go="voice"><b>♪</b>语音</button>
     <button class="tab" data-go="config"><b>⚙</b>设置</button>
   </nav>
 
@@ -851,8 +1246,8 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.12.0';
-  var BUILD_DATE = '2026-10-13';
+  var VERSION = '1.13.13';
+  var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
      其余条目统一用 {{char}} 宏，不需要为方向重写一遍。
@@ -1695,6 +2090,23 @@ textarea{
       var f = th('generate'); if (!f) return null;
       try { return f(cfg); } catch (e) { return null; }
     },
+    /* 不注入角色卡与世界书的裸生成。
+       用途是"只问一句话"的场景（比如重写语音台词）—— 不用为一句台词把整张卡和整本世界书塞进去。
+       没有 generateRaw 的环境退回 generate：照样能出结果，只是多花点 token。 */
+    genRaw: function (cfg) {
+      var f = th('generateRaw') || th('generate');
+      if (!f) return null;
+      try { return f(cfg); } catch (e) { return null; }
+    },
+    /* 离线演示模式下重写功能本来会因为拿不到生成接口而彻底不可用。
+       这里按修改方向里的关键词造一句，让演示也能看出重写是什么效果。
+       只有真接口缺失时才接上；接进酒馆后走的永远是上面那条真路径。 */
+    mockRaw: function (cfg) {
+      var dir = String((cfg && cfg.user_input) || '');
+      return new Promise(function (resolve) {
+        setTimeout(function () { resolve(mockRewriteLine(dir)); }, 620);
+      });
+    },
     on: function (evt, fn) {
       var f = th('eventOn'); if (!f) return false;
       try { f(evt, fn); return true; } catch (e) { return false; }
@@ -1895,7 +2307,35 @@ textarea{
     stageForce: true,
     gain: 100,
     resetOnPeak: true,
-    recFreq: true
+    recFreq: true,
+    // 语音（VOC）：off / buzz（振动音）/ tts（TTS 语音）/ both（两者都开）
+    // 默认 off —— TTS 要联网、要中转、要花钱，不替用户默认打开
+    voice: 'off',
+    voiceVol: 80,        // 语音音量 %
+    voiceAuto: true,     // 面板拿到新心声时自动播放
+    voiceLog: true,      // 控制台打印语音失败原因，排错用
+    voiceAI: false,      // 台词交给 AI 生成（随正文一起，不多花一次额度）；关掉则用本地台词库
+    voiceWarm: true,     // 启动装置时预热固定音集，用起来不卡
+    ttsProxy: 'http://127.0.0.1:8799/v1/tts',   // 本机转发地址
+    /* direct：直连中转（默认）—— 只要中转自己开了跨域就能通，不需要任何本机脚本
+       relay：经本机转发 —— 留作备份：中转没开跨域时用它绕开浏览器限制 */
+    ttsTransport: 'direct',
+    ttsKey: '',          // 直连模式才用；经转发时留空，令牌在转发脚本那边
+    ttsTarget: '',       // 中转的合成地址
+    ttsVoice: '',        // 角色音色 id（中转侧）—— 呻吟与调教共用同一个，不再分两套
+    ttsModel: 's2.1-pro-free',
+    ttsFormat: 'mp3',
+    ttsSpeed: 1,
+    ttsAuth: 'bearer',
+    ttsTimeout: 25000,
+    /* 高级：请求头与字段名
+       不同中转对"模型放哪个头、音色字段叫什么"的要求不一样，缺一项就整条打不通。
+       默认值与标准 Fish 协议一致，装了不改也能用。 */
+    ttsModelHdr: 'model',        // 模型放在哪个请求头名里
+    ttsRefField: 'reference_id', // 音色放在 body 的哪个字段名里
+    ttsNoModelHdr: false,        // 中转不吃 model 头时打开
+    ttsExtraHdrs: '',            // 额外请求头（JSON 字符串）
+    ttsLatency: 'low'            // low / balanced / normal
   };
   var LAST_REACT = 0;
   var PEND_KIND = null, PEND_TIMER = 0;
@@ -2043,6 +2483,769 @@ textarea{
       try { this.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05); } catch (e) { /* noop */ }
     }
   };
+
+  /* =========================================================
+   * 4b. 语音与振动音（VOC）
+   *
+   * 一条音频总线管三件事：TTS 语音、振动音、上面那个正弦声波模拟（AUD 原样保留）。
+   *
+   * 三条链路：
+   *   ① TTS 语音  —— 心声/台词的实音。走本机转发拿音频（浏览器直连中转会被跨域拦，实测确认）
+   *   ② 振动音    —— 纯 Web Audio 实时合成，频率与强度直接由装置参数驱动，零网络零费用
+   *
+   * 振动音为什么不用 TTS：频率一变声音必须立刻跟着变，TTS 是固定片段，来不及。
+   * 手机小扬声器放不出 100Hz 以下的低频，所以基频×3 取谐波、再垫一层真实低频，
+   * 靠大脑的音高知觉补出"低沉嗡鸣"。参数依据见 工具-TTS试音台.html。
+   * 吸吮式不是震（上游 S.dev='suck'）：那档声音更闷、更贴，所以低通压低、谐波减弱。
+   * ======================================================= */
+  var VOC = (function () {
+    var ctx = null, bus = null, ana = null, anaBuf = null;
+    var bzOn = false, bzLast = 0, bzNodes = null;
+    var cache = {}, cacheDb = null, dbTried = false;
+    var seq = 0, cur = null, curUrl = '';
+
+    function AC() { return window.AudioContext || window.webkitAudioContext; }
+    function isSuck() { return String(S.dev || '').indexOf('suck') === 0; }
+
+    function ensure() {
+      if (ctx) { if (ctx.state === 'suspended') { try { ctx.resume(); } catch (e) { /* noop */ } } return true; }
+      var C = AC();
+      if (!C) return false;
+      try {
+        ctx = new C();
+        bus = ctx.createGain();
+        bus.gain.value = 0.9;
+        ana = ctx.createAnalyser();
+        ana.fftSize = 1024;
+        ana.smoothingTimeConstant = 0.78;
+        anaBuf = new Uint8Array(ana.fftSize);
+        bus.connect(ana); ana.connect(ctx.destination);
+        return true;
+      } catch (e) { ctx = null; return false; }
+    }
+
+    /* ---- 振动音 ---- */
+    function makeNoise() {
+      var len = Math.max(1, Math.floor(ctx.sampleRate * 1.2));
+      var buf = ctx.createBuffer(1, len, ctx.sampleRate);
+      var d = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      var s = ctx.createBufferSource();
+      s.buffer = buf; s.loop = true;
+      return s;
+    }
+    function bzBuild() {
+      if (bzNodes) return;
+      var oscA = ctx.createOscillator(), oscB = ctx.createOscillator(), oscS = ctx.createOscillator();
+      oscA.type = 'sawtooth'; oscB.type = 'sawtooth'; oscS.type = 'sine';
+      var gD = ctx.createGain(), gS = ctx.createGain(), gT = ctx.createGain();
+      var lp = ctx.createBiquadFilter(), nz = makeNoise(), bp = ctx.createBiquadFilter(), ng = ctx.createGain();
+      oscA.connect(gD); oscB.connect(gD); oscS.connect(gS);
+      gD.connect(lp); gS.connect(lp);
+      nz.connect(bp); bp.connect(ng); ng.connect(lp);
+      lp.connect(gT); gT.connect(bus);
+      gT.gain.value = 0.0001;
+      oscA.start(); oscB.start(); oscS.start(); nz.start();
+      bzNodes = { oscA: oscA, oscB: oscB, oscS: oscS, gD: gD, gS: gS, gT: gT, lp: lp, ng: ng, bp: bp };
+    }
+    function bzHz() {
+      var v = clamp(S.freq, 1, 100) / 100;
+      return 30 * Math.pow(220 / 30, v);
+    }
+    function bzApply() {
+      if (!bzNodes || !ctx) return;
+      var t = ctx.currentTime, f = bzHz(), u = clamp(S.pow, 0, 100) / 100, suck = isSuck();
+      bzNodes.oscA.frequency.setTargetAtTime(f * 3, t, 0.04);
+      bzNodes.oscB.frequency.setTargetAtTime(f * 3.02, t, 0.04);   // 2% 失谐，出"活电机"的拍频
+      bzNodes.oscS.frequency.setTargetAtTime(f, t, 0.05);
+      // 吸吮式：低通压低、噪声更湿，听感从"嗡"变成"含住又松开"
+      bzNodes.lp.frequency.setTargetAtTime(suck ? 1500 : 4200, t, 0.08);
+      bzNodes.ng.gain.setTargetAtTime(suck ? (0.08 + u * 0.34) : (0.04 + u * 0.26), t, 0.12);
+      bzNodes.bp.frequency.setTargetAtTime((suck ? 420 : 1100) + u * (suck ? 900 : 1900), t, 0.12);
+      bzNodes.bp.Q.setTargetAtTime(1.0 + u * 1.4, t, 0.12);
+      bzNodes.gD.gain.setTargetAtTime(suck ? (0.22 + u * 0.20) : (0.44 + u * 0.30), t, 0.12);
+      bzNodes.gS.gain.setTargetAtTime(suck ? (1.0 - u * 0.15) : (0.90 - u * 0.20), t, 0.12);
+    }
+    function bzStart() {
+      if (bzOn || !ensure()) return;
+      bzBuild(); bzApply();
+      bzOn = true;
+      bzNodes.gT.gain.setTargetAtTime(bzLevel(), ctx.currentTime, 0.08);   // 电机起转
+    }
+    function bzStop() {
+      bzOn = false;
+      if (bzNodes && ctx) bzNodes.gT.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.09);
+    }
+    function bzLevel() { return (0.03 + clamp(S.pow, 0, 100) / 100 * 0.27) * (S.voice ? 0.5 : 1); }
+
+    /* 装置每次推动都调一次：频率、强度、开关在这里统一同步 */
+    function tick(env) {
+      if (!S.voice || S.voice === 'off') { if (bzOn) bzStop(); return; }
+      if (!ensure()) return;
+      if (bzMode() && S.on) {
+        if (!bzOn) bzStart();
+        if (Date.now() - bzLast > 120) {     // 参数不必每帧写，AudioParam 本身就是平滑的
+          bzLast = Date.now();
+          bzApply();
+          if (bzNodes) bzNodes.gT.gain.setTargetAtTime(bzLevel(), ctx.currentTime, 0.1);
+        }
+      } else if (bzOn) {
+        bzStop();
+      }
+    }
+
+    function bzMode() { return S.voice === 'buzz' || S.voice === 'both'; }
+    function voiceOn() { return S.voice === 'tts' || S.voice === 'both'; }
+
+    /* ---- 音频缓存（同一句不重复花钱） ---- */
+    function openDb() {
+      if (dbTried) return Promise.resolve(cacheDb);
+      dbTried = true;
+      return new Promise(function (resolve) {
+        if (typeof indexedDB === 'undefined') return resolve(null);
+        var settled = false;
+        function done(v) { if (!settled) { settled = true; resolve(v); } }
+        var req;
+        try { req = indexedDB.open('toylink_voice', 1); } catch (e) { return done(null); }
+        req.onupgradeneeded = function () {
+          var d = req.result;
+          if (!d.objectStoreNames.contains('v')) d.createObjectStore('v', { keyPath: 'id' });
+        };
+        req.onsuccess = function () { cacheDb = req.result; done(req.result); };
+        req.onerror = function () { done(null); };
+        req.onblocked = function () { done(null); };
+        setTimeout(function () { done(null); }, 3500);
+      });
+    }
+    function hashStr(s) {
+      var h = 5381;
+      for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+      return (h >>> 0).toString(36);
+    }
+    function vkey(text, voice) {
+      return hashStr([S.ttsModel, voice || S.ttsVoice, S.ttsFormat, S.ttsSpeed, S.target, text].join('|'));
+    }
+    function cached(k) {
+      if (cache[k]) return Promise.resolve(cache[k]);
+      return openDb().then(function (d) {
+        if (!d) return null;
+        return new Promise(function (resolve) {
+          try {
+            var r = d.transaction('v', 'readonly').objectStore('v').get(k);
+            r.onsuccess = function () { if (r.result) cache[k] = r.result; resolve(r.result || null); };
+            r.onerror = function () { resolve(null); };
+          } catch (e) { resolve(null); }
+        });
+      });
+    }
+    function store(k, blob, meta) {
+      var rec = { id: k, blob: blob, meta: meta, at: Date.now() };
+      cache[k] = rec;
+      // 新合成的进账就刷新"合成记录"那栏 —— 要等落库之后再读，否则读到旧的
+      setTimeout(function () { paintAudioList(); }, 160);
+      return openDb().then(function (d) {
+        if (!d) return;
+        try { d.transaction('v', 'readwrite').objectStore('v').put(rec); } catch (e) { /* noop */ }
+      });
+    }
+
+    /* ---- 运行日志 ----
+       面板里看不到 console，排错全靠这一栏。记的是"这一句有没有真的发出去、
+       打到哪、几毫秒、多大、缓存中没中"，以及失败的分岔在哪一层。 */
+    var LOG = [];
+    var LOG_MAX = 60;
+    function vlog(msg, cls) {
+      var d = new Date();
+      var t = pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+      LOG.push({ t: t, m: String(msg), c: cls || '' });
+      if (LOG.length > LOG_MAX) LOG.shift();
+      if (S.voiceLog) { try { console.log('[TOY·LINK 语音] ' + msg); } catch (e) { /* noop */ } }
+      renderLog();
+    }
+    function renderLog() {
+      var box = $('#vs-log');
+      var tag = $('#vs-log-tag');
+      if (tag) tag.textContent = LOG.length ? (LOG.length + ' 条') : '';
+      if (!box) return;
+      if (!LOG.length) { box.innerHTML = '<div class="lgdim">（还没有记录）</div>'; return; }
+      var atBottom = (box.scrollTop + box.clientHeight >= box.scrollHeight - 20);
+      box.innerHTML = LOG.map(function (x) {
+        return '<div class="lg' + (x.c ? ' ' + x.c : '') + '"><i>' + x.t + '</i>' + esc4(x.m) + '</div>';
+      }).join('');
+      if (atBottom) box.scrollTop = box.scrollHeight;
+    }
+    function ts() {
+      var d = new Date();      return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+    }
+    function fmtKB(n) { return n < 1024 ? (n + ' B') : ((n / 1024).toFixed(1) + ' KB'); }
+    /* UTF-8 字节数 —— 中转按字节计费的场合，这个数就是钱 */
+    function nBytes(s) {
+      try { return new TextEncoder().encode(String(s)).length; } catch (e) { return String(s).length * 3; }
+    }
+
+    /* ---- 合成：两种传输方式
+     *
+     * relay（默认）走本机转发：面板不带令牌，由转发脚本补 Authorization。
+     * direct 直连中转：URL + 令牌都填在面板里，令牌跟着聊天变量走。
+     *   —— 少了本机脚本这一步，但令牌会随变量进聊天文件，也会明文落在页面上。
+     *   中转自己开了跨域（Access-Control-Allow-Origin）时，直连才跑得通。
+     *
+     * 两条路的请求体完全一样，差别只在打到哪、谁来带鉴权头。 ---- */
+    function buildHeaders(c) {
+      var h = { 'Content-Type': 'application/json' };
+      if (c.transport === 'direct') {
+        if (c.authstyle === 'x-api-key' && c.key) h['x-api-key'] = c.key;
+        else if (c.authstyle === 'raw' && c.key) h['Authorization'] = c.key;
+        else if (c.authstyle !== 'none' && c.key) h['Authorization'] = 'Bearer ' + c.key;
+        if (c.model && !c.noModelHdr) h[c.modelHdr] = c.model;
+      } else {
+        // 令牌留在转发脚本那边，这里只告诉它打哪、用什么模型、怎么鉴权
+        h['x-toylink-target'] = c.target || '';
+        if (c.model) h['x-toylink-model'] = c.model;
+        if (c.modelHdr && c.modelHdr !== 'model') h['x-toylink-modelheader'] = c.modelHdr;
+        if (c.noModelHdr) h['x-toylink-noheaders'] = '1';
+        if (c.authstyle && c.authstyle !== 'bearer') h['x-toylink-auth'] = c.authstyle;
+      }
+      // 额外请求头：直连时直接合并；经转发时整块交给脚本合并
+      if (c.extraRaw) {
+        if (c.transport === 'direct') {
+          try {
+            var ex = JSON.parse(c.extraRaw) || {};
+            Object.keys(ex).forEach(function (k) { h[k] = String(ex[k]); });
+          } catch (e) { /* 非法 JSON 由界面提示，这里忽略 */ }
+        } else {
+          h['x-toylink-extra'] = c.extraRaw;
+        }
+      }
+      return h;
+    }
+
+    function cfgNow() {
+      return {
+        transport: S.ttsTransport || 'relay',
+        target: S.ttsTarget || '',
+        endpoint: (S.ttsTransport === 'direct') ? (S.ttsTarget || '') : (S.ttsProxy || ''),
+        key: S.ttsKey || '',
+        authstyle: S.ttsAuth || 'bearer',
+        model: S.ttsModel || '',
+        modelHdr: S.ttsModelHdr || 'model',
+        refField: S.ttsRefField || 'reference_id',
+        noModelHdr: !!S.ttsNoModelHdr,
+        extraRaw: S.ttsExtraHdrs || '',
+        latency: S.ttsLatency || 'low'
+      };
+    }
+
+    function synth(text, voice) {
+      var c = cfgNow();
+      if (!c.target) { vlog('没填合成地址', 'err'); return Promise.reject(new Error('没填合成地址')); }
+      if (c.transport === 'direct' && !c.endpoint) { vlog('直连模式缺合成地址', 'err'); return Promise.reject(new Error('直连时合成地址就是合成地址，先填上')); }
+      if (c.transport !== 'direct' && !c.endpoint) { vlog('没填转发地址', 'err'); return Promise.reject(new Error('没填转发地址')); }
+      if (c.transport === 'direct' && c.authstyle !== 'none' && !c.key) {
+        vlog('直连模式没填令牌', 'err');
+        return Promise.reject(new Error('直连模式要填令牌（或把鉴权改成「不带」）'));
+      }
+      var url = c.endpoint;
+      var vv = voice || S.ttsVoice;
+      var k = vkey(text, vv);
+      var t0 = Date.now();
+      vlog('请求 ' + esc4(String(text).slice(0, 34)) + ' · ' + nBytes(text) + ' 字节 · '
+        + (c.transport === 'direct' ? '直连' : '经转发') + (vv ? ' · 音色 ' + vv : ' · 默认音色'), 'hi');
+      return cached(k).then(function (hit) {
+        if (hit && hit.blob) {
+          vlog('缓存命中 ' + k + '（' + fmtKB(hit.blob.size) + '），未联网', 'ok');
+          return { cached: true, id: k, blob: hit.blob };
+        }
+        vlog('缓存未命中，开始联网合成…', 'step');
+        var body = {
+          text: text, format: S.ttsFormat, sample_rate: 44100, normalize: true,
+          latency: c.latency, temperature: 0.7, top_p: 0.7,
+          chunk_length: 300, min_chunk_length: 50,
+          prosody: { speed: S.ttsSpeed, volume: 0, normalize_loudness: true }
+        };
+        if (vv) body[c.refField] = vv;
+        if (S.ttsFormat === 'mp3') body.mp3_bitrate = 128;
+
+        var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var timer = ctl ? setTimeout(function () { ctl.abort(); }, S.ttsTimeout) : null;
+        var h = buildHeaders(c);
+
+        /* 把"实际发出去的东西"记进日志。
+           排错时缺的往往就是这个：光看"请求失败"没用，得看到打到哪个 URL、
+           带了哪些头、有没有带鉴权。令牌只记"有没有带"，不记值。 */
+        var authHdr = h['Authorization'] ? 'Authorization（' + (h['Authorization'].indexOf('Bearer ') === 0 ? 'Bearer' : '裸值') + '）'
+          : (h['x-api-key'] ? 'x-api-key' : '无');
+        var hdrNames = Object.keys(h).filter(function (k) {
+          return k !== 'Authorization' && k !== 'x-api-key';
+        }).join(', ');
+        vlog('  → ' + c.transport.toUpperCase() + ' ' + url, 'step');
+        vlog('  → 鉴权头：' + authHdr + ' ｜ 其余头：' + (hdrNames || '无'), 'step');
+        vlog('  → 请求体字段：' + Object.keys(body).join(', ') + '（' + nBytes(JSON.stringify(body)) + ' 字节）', 'step');
+
+        return fetch(url, {
+          method: 'POST', headers: h, body: JSON.stringify(body),
+          signal: ctl ? ctl.signal : undefined
+        }).then(function (r) {
+          if (timer) clearTimeout(timer);
+          var ms = Date.now() - t0;
+          if (!r.ok) {
+            return r.text().then(function (tx) {
+              var detail = String(tx || '').slice(0, 200);
+              vlog((c.transport === 'direct' ? '上游' : '转发') + ' 回 ' + r.status + '（' + ms + 'ms）'
+                + (r.status === 401 || r.status === 403 ? ' ← 鉴权失败，检查令牌与鉴权方式'
+                  : r.status === 404 ? ' ← 路径不对，检查合成地址'
+                    : r.status === 429 ? ' ← 触发限流（并发/配额）' : '')
+                + (detail ? ' · ' + esc4(detail) : ''), 'err');
+              throw new Error((c.transport === 'direct' ? '上游' : '转发') + '返回 ' + r.status + '：' + detail);
+            }, function () {
+              vlog((c.transport === 'direct' ? '上游' : '转发') + ' 回 ' + r.status + '（' + ms + 'ms）', 'err');
+              throw new Error((c.transport === 'direct' ? '上游' : '转发') + '返回 ' + r.status);
+            });
+          }
+          var ct = r.headers.get('content-type') || '';
+          if (ct.indexOf('json') >= 0) {
+            return r.text().then(function (tx) {
+              vlog('上游回的是 JSON 不是音频：' + esc4(String(tx || '').slice(0, 160)), 'err');
+              throw new Error('上游不是音频：' + String(tx || '').slice(0, 200));
+            });
+          }
+          return r.arrayBuffer().then(function (buf) {
+            if (timer) clearTimeout(timer);
+            var total = Date.now() - t0;
+            var kb = buf ? Math.round(buf.byteLength / 1024 * 10) / 10 : 0;
+            vlog('收到音频 ' + kb + ' KB · ' + total + 'ms · ' + (ct || '无类型'), 'ok');
+            return buf;
+          });
+        }).then(function (buf) {
+          if (!buf || !buf.byteLength) { vlog('拿到空音频', 'err'); throw new Error('拿到空音频'); }
+          var blob = new Blob([buf], { type: guessMime(S.ttsFormat) });
+          return store(k, blob, { text: text, model: S.ttsModel, voice: vv }).then(function () {
+            return { cached: false, id: k, blob: blob };
+          });
+        }, function (e) {
+          if (timer) clearTimeout(timer);
+          var msg = (e && e.name === 'AbortError') ? '请求超时（' + S.ttsTimeout + 'ms）'
+            : String((e && e.message) || e);
+          if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+            vlog(c.transport === 'direct'
+              ? '直连被拦：中转没开跨域（CORS），或地址写错了。'
+                + '这是最常卡住的一处 —— 换成「经本机转发」就能绕开（跑 node 工具-转发.js）。'
+              : '连不上转发脚本：先在命令行跑 node 工具-转发.js，看到「已就绪」再回来。'
+                + '若转发脚本已在跑，检查「转发地址」里的端口是否和它一致（默认 8799）。', 'err');
+          } else if (e && e.name !== 'AbortError') {
+            vlog('请求失败：' + esc4(msg), 'err');
+          }
+          throw e;
+        });
+      });
+    }
+
+    /* ---- 播放 ---- */
+    function play(blob, opts) {
+      if (!blob) return;
+      if (!ensure()) { toast('这个环境没有 Web Audio，放不了声音'); return; }
+      try {
+        if (cur) { try { cur.pause(); } catch (e) { /* noop */ } }
+        if (curUrl) { try { URL.revokeObjectURL(curUrl); } catch (e) { /* noop */ } }
+        curUrl = URL.createObjectURL(blob);
+        var el = new Audio(curUrl);
+        cur = el;
+        el.volume = clamp((opts && opts.vol != null ? opts.vol : S.voiceVol / 100), 0, 1);
+        try {
+          var src = ctx.createMediaElementSource(el);
+          src.connect(bus);
+        } catch (e) { /* 某些环境接不了总线就退回原生播放 */ }
+        var p = el.play();
+        if (p && p.catch) p.catch(function () { /* 自动播放被挡，用户手动点 */ });
+      } catch (e) { /* noop */ }
+    }
+
+    /* 说一句：先查缓存，没有就合成，然后播。voice 可指定音色 */
+    function say(text, opts) {
+      text = String(text || '').trim();
+      if (!text || !voiceOn()) return Promise.resolve(null);
+      var voice = (opts && opts.voice) || S.ttsVoice;
+      var my = ++seq;
+      if (my > 1) vlog('新的播放打断上一条（第 ' + my + ' 次）', 'warn');
+      return synth(text, voice).then(function (r) {
+        if (my !== seq) return null;      // 期间又来了新的一句，这条丢掉
+        play(r.blob, opts);
+        return r;
+      }).catch(function (e) {
+        var msg = (e && e.message) || String(e);
+        if (my === seq) {
+          // synth 里已经把细节记进日志了，这里只补一句"这一条最终没播出来"
+          vlog('这一条没播出来：' + esc4(msg), 'err');
+          toast('语音没出来：' + msg, 3200);
+        }
+        return null;
+      });
+    }
+    /* 预热：把固定音集先合成好，之后就不占实时通道 */
+    function warm(list) {
+      if (!voiceOn() || !list || !list.length) return Promise.resolve(0);
+      var n = 0, i = 0;
+      vlog('开始预热 ' + list.length + ' 条（串行，间隔 260ms）', 'hi');
+      return new Promise(function (resolve) {
+        (function step() {
+          if (i >= list.length) {
+            vlog('预热结束：成功 ' + n + ' / ' + list.length + ' 条', n ? 'ok' : 'warn');
+            return resolve(n);
+          }
+          synth(list[i++]).then(function () { n++; }, function () { /* noop */ }).then(function () {
+            setTimeout(step, 260);        // 串行，避开中转的并发上限
+          });
+        })();
+      });
+    }
+    function clearCache() {
+      cache = {};
+      return openDb().then(function (d) {
+        if (!d) return;
+        try { d.transaction('v', 'readwrite').objectStore('v').clear(); } catch (e) { /* noop */ }
+      });
+    }
+    /* 缓存里所有的音频（合成记录就是它）。
+       按时间倒序，新的在前 —— 试听时最关心的就是刚合成的那几条。 */
+    function listAll() {
+      return openDb().then(function (d) {
+        if (!d) return [];
+        return new Promise(function (resolve) {
+          try {
+            var r = d.transaction('v', 'readonly').objectStore('v').getAll();
+            r.onsuccess = function () {
+              var list = r.result || [];
+              list.sort(function (a, b) { return b.at - a.at; });
+              resolve(list);
+            };
+            r.onerror = function () { resolve([]); };
+          } catch (e) { resolve([]); }
+        });
+      });
+    }
+    function getRec(id) {
+      return openDb().then(function (d) {
+        if (!d) return null;
+        return new Promise(function (resolve) {
+          try {
+            var r = d.transaction('v', 'readonly').objectStore('v').get(id);
+            r.onsuccess = function () { resolve(r.result || null); };
+            r.onerror = function () { resolve(null); };
+          } catch (e) { resolve(null); }
+        });
+      });
+    }
+    function cacheCount() {
+      return openDb().then(function (d) {
+        if (!d) return Object.keys(cache).length;
+        return new Promise(function (resolve) {
+          try {
+            var r = d.transaction('v', 'readonly').objectStore('v').count();
+            r.onsuccess = function () { resolve(r.result || 0); };
+            r.onerror = function () { resolve(Object.keys(cache).length); };
+          } catch (e) { resolve(Object.keys(cache).length); }
+        });
+      });
+    }
+    function level() {
+      if (!ana) return 0;
+      try {
+        ana.getByteTimeDomainData(anaBuf);
+        var sum = 0;
+        for (var i = 0; i < anaBuf.length; i += 4) {
+          var v = (anaBuf[i] - 128) / 128;
+          sum += v * v;
+        }
+        return Math.sqrt(sum / (anaBuf.length / 4));
+      } catch (e) { return 0; }
+    }
+    function resume() { if (ensure()) { try { ctx.resume(); } catch (e) { /* noop */ } } }
+
+    return {
+      ensure: ensure, resume: resume, tick: tick, say: say, play: play, warm: warm,
+      clearCache: clearCache, cacheCount: cacheCount, level: level,
+      listAll: listAll, getRec: getRec,
+      bzOn: function () { return bzOn; },
+      voiceOn: voiceOn, buzzMode: bzMode,
+      stopAll: function () { bzStop(); if (cur) { try { cur.pause(); } catch (e) { /* noop */ } } },
+      // 日志：面板内部记一份，外面的连通性检查等也往里写
+      addLog: vlog,
+      repaintLog: renderLog,
+      clearLog: function () { LOG.length = 0; renderLog(); },
+      logText: function () { return LOG.map(function (x) { return '[' + x.t + '] ' + x.m; }).join('\n'); },
+      logCount: function () { return LOG.length; }
+    };
+  })();
+
+  function guessMime(f) {
+    if (f === 'wav') return 'audio/wav';
+    if (f === 'opus') return 'audio/ogg';
+    return 'audio/mpeg';
+  }
+
+  /* =========================================================
+   * ZIP 打包（stored 模式，不压缩）
+   *
+   * 面板是单文件、零依赖，所以自己写一个最小 ZIP。
+   * 音频本身已经是压缩格式（mp3/opus），再压一遍收益接近零、还费 CPU，
+   * 所以用 stored —— 实现简单，任何解压软件都认。
+   * ======================================================= */
+  var CRC_TBL = (function () {
+    var t = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(buf) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < buf.length; i++) c = CRC_TBL[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+  function u16(a, o, v) { a[o] = v & 255; a[o + 1] = (v >>> 8) & 255; }
+  function u32(a, o, v) { a[o] = v & 255; a[o + 1] = (v >>> 8) & 255; a[o + 2] = (v >>> 16) & 255; a[o + 3] = (v >>> 24) & 255; }
+
+  function zipBuild(entries) {
+    var enc = new TextEncoder();
+    var parts = [], central = [], offset = 0;
+    function cat(u8) { parts.push(u8); offset += u8.length; }
+
+    entries.forEach(function (e) {
+      var nameB = enc.encode(e.name);
+      var data = e.data;
+      var crc = crc32(data);
+      var lh = new Uint8Array(30 + nameB.length);
+      u32(lh, 0, 0x04034b50);          // 局部文件头签名
+      u16(lh, 4, 20);                  // 需要的版本
+      u16(lh, 6, 0x0800);              // 文件名走 UTF-8
+      u16(lh, 8, 0);                   // 压缩方式 0 = stored
+      u16(lh, 10, 0);                  // 修改时间
+      u16(lh, 12, 0);                  // 修改日期
+      u32(lh, 14, crc);
+      u32(lh, 18, data.length);        // 压缩后大小
+      u32(lh, 22, data.length);        // 原始大小
+      u16(lh, 26, nameB.length);
+      u16(lh, 28, 0);
+      lh.set(nameB, 30);
+      cat(lh); cat(data);
+
+      var cd = new Uint8Array(46 + nameB.length);
+      u32(cd, 0, 0x02014b50);          // 中央目录签名
+      u16(cd, 4, 20);
+      u16(cd, 6, 20);
+      u16(cd, 8, 0x0800);
+      u16(cd, 10, 0);
+      u32(cd, 16, crc);
+      u32(cd, 20, data.length);
+      u32(cd, 24, data.length);
+      u16(cd, 28, nameB.length);
+      u32(cd, 42, 0);
+      cd.set(nameB, 46);
+      central.push(cd);
+    });
+
+    var cdSize = 0;
+    central.forEach(function (c) { cdSize += c.length; });
+    var eocd = new Uint8Array(22);
+    u32(eocd, 0, 0x06054b50);          // 目录结束记录
+    u16(eocd, 8, entries.length);
+    u16(eocd, 10, entries.length);
+    u32(eocd, 12, cdSize);
+    u32(eocd, 16, offset);
+    central.forEach(function (c) { parts.push(c); });
+    parts.push(eocd);
+
+    var total = 0;
+    parts.forEach(function (p) { total += p.length; });
+    var out = new Uint8Array(total), at = 0;
+    parts.forEach(function (p) { out.set(p, at); at += p.length; });
+    return out;
+  }
+  function safeName(s) {
+    return String(s || '').replace(/[\\/:*?"<>|\r\n\t]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, 24) || 'audio';
+  }
+
+  /* =========================================================
+   * 4c. 语音台词库
+   *
+   * 三档对应三种口气（1.12.0 的第三档也照顾到了）：
+   *   char 档（遥控器在玩家手里）→ 被作用的是角色 → 呻吟
+   *   user 档（遥控器在角色手里）→ 角色是操控方   → 调教对白
+   *   self 档（都在玩家自己身上）→ 没有别人        → 玩家自己的气音
+   *
+   * __W__ = 被作用者的名字，__H__ = 拿遥控器的人的名字。
+   * 名字由 wearerName() / holderName() 在运行时填，所以「对方是谁」填了新名字也能对上。
+   *
+   * 情绪标记用 Fish S2 的 `[方括号]` 语法（官方 Emotion Control 文档）：
+   *   · 音效标记：[panting] 喘、[gasping] 抽气、[sobbing] 哭腔、[groaning] 闷哼、
+   *     [sighing] 叹息、[crying loudly] 大哭、[chuckling] 轻笑、[whispering] 耳语
+   *   · 情绪标记：[nervous] [scared] [embarrassed] [pleased] [confident] [sad]
+   *   · 语调标记：[soft tone] [shouting] [screaming]
+   *   · 括号里**可以写自然语言**（"规则：Bracket cues can use natural language"，不限于固定表），
+   *     所以中文描述如 [气声] [压低的声音] 也成立 —— 这里按这个能力用。
+   *
+   * 标记放在句子开头最有效（官方 Placement Rules），一条最多叠 3 个。
+   * 每条台词都短、碎、带气声：短文本进 TTS 很容易出朗读腔，
+   * 破法一是把标点和碎片写足，二是给足情绪标记 —— 两者都用在下面。
+   * ======================================================= */
+  /* 四档顺序：关 → TTS 语音 → 两个都要 → 振动音。
+     振动音排最后是因为它**还没在真机上听过**（纯 Web Audio 合成，参数只验证到数值合法），
+     界面上带「未测试 · 慎用」标记，别让它在最顺手的位置被当成现成功能。 */
+  var VOICE_IDS = ['off', 'tts', 'both', 'buzz'];
+  var VOICE_LABEL = { off: '关', tts: 'TTS 语音', both: '两个都要', buzz: '振动音（未测试）' };
+  /* 台词库的三个分类在界面上的名字（beg 是「请求停止」时的应答，不属于语音档位） */
+  var VOICE_KIND_LABEL = { moan: '呻吟（被作用）', tease: '调教对白（TA 操控）', self: '自己玩 · 气音', beg: '请求停止时的应答' };
+  /* 「两个都要」= TTS 念台词 + 振动音垫底，两者是叠加关系；
+     「振动音」= 只出声效、不念台词，且属于未测试项 */
+  var VOICE_NOTE = {
+    off: '只有文字反应，不出声。',
+    tts: '每轮把台词念出来（要走中转，见「语音设置」页）。',
+    both: 'TTS 念台词，同时振动音垫底 —— 说话时有底噪，更像装置在响。',
+    buzz: '只出声效、不念台词。这一档还没在真机上听过，慎用。'
+  };
+
+  /* 分档情绪标记：同一个人在不同阶段，标记要跟着走，
+     否则五档听起来会像一个样。每条 1-2 个，留出叠加余地。 */
+  var VOICE_MARK = {
+    moan: [
+      ['[气声]'], ['[panting]'], ['[panting][气声]'],
+      ['[gasping][颤抖]'], ['[sobbing][gasping]']
+    ],
+    tease: [
+      ['[soft tone]'], ['[calm]'], ['[chuckling]'],
+      ['[confident][低沉]'], ['[whispering][confident]']
+    ],
+    self: [
+      ['[气声]'], ['[whispering]'], ['[panting][whispering]'],
+      ['[gasping]'], ['[sobbing][gasping]']
+    ],
+    beg: ['[sighing]', '[soft tone]', '[calm]', '[soft tone]']
+  };
+
+  var VOICE_LIB = {
+    moan: [
+      [{ t: '嗯……' }, { t: '唔……哼——' }, { t: '哈啊……' }],
+      [{ t: '哈啊……嗯——' }, { t: '不、不行……' }, { t: '唔……别、别这样……' }, { t: '啊……等一下……' }],
+      [{ t: '不行……不行了……' }, { t: '别、别调了……' }, { t: '啊——嗯……不要……' }, { t: '慢、慢一点……' }],
+      [{ t: '不要了……求你……' }, { t: '啊……啊、啊——' }, { t: '不行……我真的不行……' }],
+      [{ t: '——啊啊！嗯……' }, { t: '不要、不要了……' }, { t: '求你……停下……' }]
+    ],
+    tease: [
+      [{ t: '乖，坐好。' }, { t: '手放开。' }, { t: '看着前面。' }],
+      [{ t: '再撑一会儿。' }, { t: '别出声，会被人听见。' }, { t: '还能说得完整？' }],
+      [{ t: '你现在这个样子，很好看。' }, { t: '想让我停？先说清楚。' }, { t: '手别抖。' }],
+      [{ t: '求我。' }, { t: '说话，说不出来就点头。' }, { t: '这就不行了？' }],
+      [{ t: '记住了，今天是谁让你这样的。' }, { t: '抬头，看着我。' }]
+    ],
+    self: [
+      [{ t: '嗯……' }, { t: '唔……' }],
+      [{ t: '哈啊……' }, { t: '不行，声音会漏出去。' }],
+      [{ t: '不、不行……' }, { t: '咬住……不能出声……' }],
+      [{ t: '——嗯！' }, { t: '慢、慢一点……' }],
+      [{ t: '啊……啊——' }, { t: '不能出声……' }]
+    ],
+    beg: [
+      { t: '……好。' }, { t: '……松手了。' }, { t: '这次就放你。' }, { t: '……过来。' }
+    ]
+  };
+
+  /* 按阶段与作用对象挑一条。stage 是 1-5。 */
+  function voiceKind() {
+    if (S.target === 'user') return 'tease';   // 遥控器在角色手里 → 调教对白
+    if (S.target === 'self') return 'self';    // 都在玩家自己身上 → 没有别人，只有自己的气音
+    return 'moan';                             // char 档 → 被作用的是角色
+  }
+  function voiceMark(kind, stage) {
+    if (kind === 'beg') {
+      var b = VOICE_MARK.beg;
+      return b[Math.floor(Math.random() * b.length)];
+    }
+    var arr = VOICE_MARK[kind] || VOICE_MARK.moan;
+    var i = clamp((stage || 1) - 1, 0, arr.length - 1);
+    var pool = arr[i] || arr[0];
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+  /* 名字填充：台词库里的占位符换成实际的人名 */
+  function fillName(s) {
+    return String(s || '')
+      .split('__W__').join(wearerName(true))
+      .split('__H__').join(holderName(true));
+  }
+  /* 取一条现成台词，**带上情绪标记**（标记在最前，官方说句首最有效） */
+  function libPick(kind, stage) {
+    var arr = VOICE_LIB[kind] || VOICE_LIB.moan;
+    var i = clamp((stage || 1) - 1, 0, arr.length - 1);
+    var pool = arr[i];
+    if (!pool || !pool.length) { pool = VOICE_LIB.moan[0]; }
+    var line = pool[Math.floor(Math.random() * pool.length)].t;
+    return fillName(voiceMark(kind, stage) + ' ' + line);
+  }
+  /* 已经带标记就别再叠一层（AI 给的台词通常自带） */
+  function hasMark(s) { return /^\s*\[[^\]]+\]/.test(String(s || '')); }
+
+  /* ---- 台词库的取用接口（试听选择器与正式播放共用同一套） ---- */
+  /* 某一类某一档的库本体。
+     三级结构（moan/tease/self）是 [5 档][每条]；beg 是不分档的扁平 [每条]。
+     判据要落在"第一层元素还是不是数组"上 —— 早先写成看 arr[0].t 是否存在，
+     而 arr[0] 本身是数组、数组上没有 t，于是整类都被误判成扁平的了。 */
+  function libStagePool(kind, stage) {
+    var arr = VOICE_LIB[kind] || VOICE_LIB.moan;
+    if (!arr.length || !Array.isArray(arr[0])) return [];   // beg：扁平数组，没有档位
+    return arr[clamp((stage || 1) - 1, 0, arr.length - 1)] || [];
+  }
+  /* 取第 i 条原样（试听要的是"这一条"，不要随机，所以不走 libPick）。
+     kind='beg' 时走那一支扁平的应答句。 */
+  function libLineAt(kind, stage, i) {
+    if (kind === 'beg') {
+      var b = VOICE_LIB.beg;
+      i = clamp(i | 0, 0, b.length - 1);
+      return fillName(voiceMark('beg', stage) + ' ' + b[i].t);
+    }
+    var pool = libStagePool(kind, stage);
+    if (!pool.length) pool = VOICE_LIB.moan[0];
+    i = clamp(i | 0, 0, pool.length - 1);
+    return fillName(voiceMark(kind, stage) + ' ' + pool[i].t);
+  }
+
+  /* 决定"说哪一句、用什么音色口气"。
+  
+     两条内容严格分开，别互相污染：
+       · 界面上的文字说明（心声）—— 给眼睛看的，"低下头，呼吸乱了一拍。"这种
+       · 要念出来的台词（语音）—— 给耳朵听的，带情绪标记，能直接进 TTS
+  
+     所以这里**不拿说明文字去凑台词**（那会把叙述念成一本书）。
+     优先级：AI 明写的台词（带标记）> 台词库（自动配标记）。
+     force='beg' 时走请求停止那一支。 */
+  function voiceFor(voiceLine, stage, force) {
+    var kind = (force === 'beg') ? 'beg' : voiceKind();
+    // 音色只有一套：呻吟和调教是同一个角色的同一个人，分开配反而会串味
+    var voice = S.ttsVoice;
+    var out = { text: '', kind: kind, voice: voice };
+
+    // 1) AI 这一轮明写的台词：有引号/情绪标记/拟声起头就当台词用（这正是它该干的事）
+    var given = fillName(String(voiceLine || '').trim());
+    if (given && voiceish(given)) {
+      out.text = hasMark(given) ? given : (voiceMark(kind, stage) + ' ' + given);
+      return out;
+    }
+    // 2) 退回台词库：按档位取现成的，自动配情绪标记
+    out.text = libPick(kind, stage);
+    return out;
+  }
+
+  /* 判断一段文本"是不是台词"：带情绪标记、引号，或者以拟声词起头的短句。
+     目的是拦住"低下头，呼吸乱了一拍。"这类叙述 —— 它们不该被念出来。 */
+  function voiceish(s) {
+    s = String(s || '').trim();
+    if (!s) return false;
+    if (hasMark(s)) return true;                                  // [panting] 哈啊……
+    if (/^[「『"'“]/.test(s) || /[」』"'”]$/.test(s)) return true;  // 带引号的对白
+    if (s.length > 20) return false;                              // 太长的一律不是台词
+    return /^[啊嗯唔哈呀哦诶咿嘻哼乖手别求慢不要]/.test(s)
+      || /[……——]{1,}/.test(s) && !/[，。]{1}[^…—]/.test(s);
+  }
 
   /* =========================================================
    * 5. 渲染
@@ -2220,8 +3423,10 @@ textarea{
 
       HAP.fire(S.env, hz());
       AUD.update(S.env, hz());
+      VOC.tick(S.env);      // 振动音与 TTS 输出在这条链上统一同步
     } else {
       S.env = 0;
+      VOC.tick(0);          // 装置停了也要调一次，交给它自己收干净
     }
   }
 
@@ -2783,8 +3988,10 @@ textarea{
       if (!body) { toast('没有拿到回复，检查 API 与预设'); settleBeg(false); return; }
       settleBeg(true);      // 回复到了才算数：TA 答没答应，这里结账
       BRIDGE.addMsg({ role: 'assistant', message: body });
-      // 面板上只放心声，正文已经在聊天记录里了
-      pushMsg('ai', d.heart || heartFallback());
+      // 面板上只放心声（文字说明），正文已经在聊天记录里了。
+      // 语音是另一条内容：AI 明写的台词优先，否则按档位从台词库取 —— 每轮都会有一句。
+      var vt = d.voice || voiceFor(d.voice, S.stage).text;
+      pushMsg('ai', d.heart || heartFallback(), vt);
     };
     if (res && res.then) res.then(done, function () { markIdle(); holdOff(); markPending(false); settleBeg(false); }); else done('');
   }
@@ -2876,7 +4083,7 @@ textarea{
         + '具体调到什么档、想达到什么效果，由你按 ' + cn + ' 的性格与此刻的心情决定。',
       '',
       '正文写完之后，另起一行附上装置读数，格式必须完全照下面这样：',
-      '<TOY>开关=开|模式=潮汐|频率=45|强度=70|说明=想让你在人前先开口求他|心声=嘴上说着求我，其实自己也快撑不住了</TOY>',
+      '<TOY>开关=开|模式=潮汐|频率=45|强度=70|说明=想让你在人前先开口求他|心声=嘴上说着求我，其实自己也快撑不住了|语音=乖，坐好，别出声</TOY>',
       '',
       '规则：',
       '· 开关填「开」或「关」。填「关」表示这一轮把装置停了。',
@@ -2885,6 +4092,17 @@ textarea{
       '· 说明用一句短话写清这次想干什么、想看到什么样的反应。',
       '· 心声写 ' + cn + ' 此刻心里真正的想法，不是嘴上说的话，一句话、25 字以内。'
         + '面板上只显示这一句，所以它要能独立看懂。',
+      '· 语音填 ' + cn + ' 这一轮**说出口**的话。**每一轮都必须填，不能留空** —— 这一行会被直接念成声音。',
+      '· 语音的写法：**开头先放情绪标记，再写台词**。标记用方括号，可以写英文固定标记（' +
+        '[panting] [gasping] [sobbing] [moaning] [whispering] [soft tone] [nervous] [pleased]）' +
+        '，也可以写中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；一句最多叠 3 个。',
+      '· 台词本身 **12-18 字最合适，最多 20 字**，用省略号和破折号断句。',
+      '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、' +
+        '压在喉咙里的碎音。',
+      '· 语音里**不要写动作、不要写旁白、不要用括号包住叙述** ——' +
+        '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里，不要放进语音。',
+      '· 正确例子：[panting] 哈啊……不要……　／　[confident][低调] 乖，坐好。　／　' +
+        '[gasping][气声] 不、不行……',
       '· 这一行是给装置读的，正文里绝对不要提到它，也不要解释这是什么。'
     ];
 
@@ -2929,12 +4147,13 @@ textarea{
     var pow = parseInt(pick('强度'), 10);
     var note = pick('说明');
     var heart = pick('心声');   // 面板上显示这一句，不放正文
+    var voice = pick('语音');   // 这一轮要说出口的话，交给语音念出来
 
     // 只有遥控器在 TA 手里时，读数里的档位才算数。另两档遥控器在玩家手里，AI 只交心声；
     // 以前这里不分档，每条回复都会把「最近变化」写成「××调到：维持原档」——
     // 自己玩那一档里 ×× 是「系统」「旁白」，AI 读到就以为有人拿着遥控器。
     if (S.target !== 'user') {
-      return { text: raw.replace(/<TOY>[\s\S]*?<\/TOY>/gi, '').trim(), applied: false, heart: heart };
+      return { text: raw.replace(/<TOY>[\s\S]*?<\/TOY>/gi, '').trim(), applied: false, heart: heart, voice: voice };
     }
 
     var changed = [];
@@ -2976,7 +4195,7 @@ textarea{
     } else if (note) {
       toast(cn + '的想法：' + note, 2600);
     }
-    return { text: raw.replace(/<TOY>[\s\S]*?<\/TOY>/gi, '').trim(), applied: true, note: note, heart: heart };
+    return { text: raw.replace(/<TOY>[\s\S]*?<\/TOY>/gi, '').trim(), applied: true, note: note, heart: heart, voice: voice };
   }
 
   /* 用户和状态之间的翻译层：拿不到心声时不要编。
@@ -3002,11 +4221,17 @@ textarea{
   function innerGenerate() {
     if (!BRIDGE.ready) { fakeReact('auto'); return; }
     var holder = pushMsg('ai', '');
-    holder.querySelector('.bubble').classList.add('blink', 'now');
+    var bubble = holder.querySelector('.bubble');
+    bubble.classList.add('blink', 'now');
+    // 流式期间只往这个 span 里写字：这样结束后能整条换成"台词 + 说明 + 播放键"的结构，
+    // 不会被流式文本冲掉。流式过程照旧看得见，只是不参与最终排版。
+    var live = document.createElement('span');
+    live.className = 'live';
+    bubble.appendChild(live);
     var buf = '';
     var streamFn = function (text) {
       buf = text || '';
-      holder.querySelector('.bubble').textContent = cleanReply(buf);
+      live.textContent = cleanReply(buf);
       scrollFeed();
     };
     var offStream = function () {
@@ -3031,10 +4256,12 @@ textarea{
       var d = applyToyDirective((typeof text === 'string' && text) ? text : buf);
       markPending(false);   // 面板此刻显示的已经是 TA 刚选定的那一档
       var body = cleanReply(d.text);
-      var b = holder.querySelector('.bubble');
-      b.classList.remove('blink', 'now');
       if (body) {
-        b.textContent = d.heart || heartFallback();
+        // 整条重建：先取好台词（AI 明写的优先，否则按档位从台词库取），
+        // 再把 holder 换成标准的「说明 + 台词 + 播放键」结构 —— 和另一条路径一致。
+        var vt2 = voiceFor(d.voice, S.stage).text;
+        holder.remove();
+        pushMsg('ai', d.heart || heartFallback(), vt2);
         BRIDGE.addMsg({ role: 'assistant', message: body }, { refresh: 'none' });
         settleBeg(true);
       } else {
@@ -3048,36 +4275,53 @@ textarea{
   }
 
   // ---- 离线演示 ----
+  // 每一组 = 说明文字 + 对应台词。演示模式也要"正文一轮、声音一轮"，
+  // 不然看不出语音长什么样。说明是叙述，台词是能念出来的话，两者不混。
   var FAKE = {
-    low: ['轻轻吸了口气，膝盖不自觉地并了并。', '攥住手边的布料，声音里带出一点黏。', '低下头，呼吸乱了一拍。'],
-    mid: ['整个人抖了一下，指尖掐进掌心，喉咙里漏出一声没压住的轻哼。', '试着稳住呼吸，可腰已经自己塌了下去。', '声音开始发飘，一句话断成三截。'],
-    high: ['再也说不出完整的句子，只剩下贴着牙齿的呜咽。', '弓起背，指节泛白，一声比一声更哑。', '意识被搅成一团白光，只能本能地追着那点节奏。']
+    low: [
+      { n: '轻轻吸了口气，膝盖不自觉地并了并。', v: '[气声] 嗯……' },
+      { n: '攥住手边的布料，声音里带出一点黏。', v: '[soft tone] 唔……别、别这样……' },
+      { n: '低下头，呼吸乱了一拍。', v: '[panting] 哈啊……等一下……' }
+    ],
+    mid: [
+      { n: '整个人抖了一下，指尖掐进掌心，喉咙里漏出一声没压住的轻哼。', v: '[panting] 不、不行……' },
+      { n: '试着稳住呼吸，可腰已经自己塌了下去。', v: '[gasping] 啊——嗯……不要……' },
+      { n: '声音开始发飘，一句话断成三截。', v: '[panting][气声] 慢、慢一点……' }
+    ],
+    high: [
+      { n: '再也说不出完整的句子，只剩下贴着牙齿的呜咽。', v: '[sobbing][gasping] 不要了……求你……' },
+      { n: '弓起背，指节泛白，一声比一声更哑。', v: '[gasping][颤抖] 不行……我真的不行……' },
+      { n: '意识被搅成一团白光，只能本能地追着那点节奏。', v: '[sobbing] 啊……啊——' }
+    ]
   };
   function fakeReact() {
     var bank = S.aro < 25 ? FAKE.low : (S.aro < 65 ? FAKE.mid : FAKE.high);
-    var txt = bank[Math.floor(Math.random() * bank.length)];
+    var pick = bank[Math.floor(Math.random() * bank.length)];
     setTimeout(function () {
-      var holder = pushMsg('ai', '');
-      holder.querySelector('.bubble').textContent = txt;
-      scrollFeed();
+      // 直接把成对的内容交给 pushMsg：说明文字 + 台词（台词会配播放键并自动播）
+      pushMsg('ai', pick.n, pick.v);
     }, 420);
   }
 
   /* =========================================================
-   * 8. 反应流渲染
+   * 8. 声音流渲染
    * ======================================================= */
   function scrollFeed() {
     var v = $('#v-chat');
     v.scrollTop = v.scrollHeight;
   }
-  /* 心声是谁的：自己玩那一档没有 TA，心声写的是玩家自己压不住的念头 */
-  function heartLabel() { return S.target === 'self' ? '你的心声' : 'TA 的心声'; }
+  /* 这一页是谁的声音：自己玩那一档没有 TA，是玩家自己的呻吟 */
+  function heartLabel() { return S.target === 'self' ? '你的声音' : 'TA 的声音'; }
   function feedEmptyHtml() {
-    return '<div class="feed-empty">还没有心声<br>' + (S.target === 'self'
-      ? '装置跑起来之后，你自己压不住的念头会显示在这里'
-      : '装置跑起来之后，TA 心里在想什么会显示在这里') + '</div>';
+    return '<div class="feed-empty">还没有声音<br>' + (S.target === 'self'
+      ? '装置跑起来之后，你自己的声音会显示在这里'
+      : '装置跑起来之后，TA 会发出什么声音会显示在这里') + '</div>';
   }
-  function pushMsg(kind, text) {
+  /* 面板上每一条声音在这里落地。三个参数：谁、给眼睛看的说明文字、给耳朵听的台词。
+     说明文字常驻显示，台词带情绪标记并配播放键 —— 两者职责不混。
+     台词相关的节点挂在 rec 上，供「重写这句」取用（每次都从 DOM 现取，不用闭包里的旧引用，
+     否则重写一次之后闭包指向的就是被换掉的旧节点了）。 */
+  function pushMsg(kind, text, speak) {
     var feed = $('#feed');
     var empty = feed.querySelector('.feed-empty');
     if (empty) empty.remove();
@@ -3085,11 +4329,403 @@ textarea{
     el.className = 'msg ' + (kind === 'ai' ? 'ai' : (kind === 'me' ? 'me' : 'sys'));
     var who = kind === 'ai' ? heartLabel() : (kind === 'me' ? '你' : '装置');
     el.innerHTML = '<div class="who"><i></i>' + who + '</div><div class="bubble"></div>';
-    el.querySelector('.bubble').textContent = text || '';
+
+    var rec = { root: el, text: String(text || ''), voice: String(speak || '').trim(), prev: '' };
+    var bubble = el.querySelector('.bubble');
+    // skipSub：重写时用 —— 旧的那种不带"说明"分支只为了兼容 pushMsg('ai','') 的占位调用
+    var sub = null;
+    if (rec.voice) {
+      lineEl(rec);
+      if (rec.text) sub = subEl(bubble, rec.text);
+    } else {
+      bubble.textContent = rec.text;
+    }
     feed.appendChild(el);
     scrollFeed();
+
+    // 语音与重写控件。音色与口气由**台词**决定，说明文字不参与合成。
+    if (VOC.voiceOn() && rec.voice) vbarFor(rec, null, true);
+    editBtnFor(rec);
     return el;
   }
+
+  /* 台词行：整块替换（重写后用它把新台词写上） */
+  function lineEl(rec) {
+    var bubble = rec.root.querySelector('.bubble');
+    var old = bubble.querySelector('.vline');
+    if (old) old.remove();
+    var d = document.createElement('div');
+    d.className = 'vline';
+    d.textContent = rec.voice;
+    bubble.insertBefore(d, bubble.firstChild);
+    return d;
+  }
+  /* 说明文字行 */
+  function subEl(bubble, txt) {
+    var old = bubble.querySelector('.sub');
+    if (old) old.remove();
+    var s = document.createElement('span');
+    s.className = 'sub';
+    s.textContent = txt;
+    bubble.appendChild(s);
+    return s;
+  }
+  /* 播放条 */
+  function vbarFor(rec, oldBar, autoplay) {
+    var vm = voiceFor(rec.voice, S.stage);
+    if (oldBar) oldBar.remove();
+    var bar = document.createElement('div');
+    bar.className = 'vbar';
+    var b = document.createElement('button');
+    b.className = 'vplay';
+    b.type = 'button';
+    b.innerHTML = '<span class="ico">▶</span>语音播放';
+    b.addEventListener('click', function () {
+      b.classList.add('on');
+      VOC.say(rec.voice, { vol: S.voiceVol / 100, voice: voiceFor(rec.voice, S.stage).voice });
+    });
+    bar.appendChild(b);
+    rec.root.appendChild(bar);
+    if (autoplay && S.voiceAuto) {
+      VOC.say(rec.voice, { vol: S.voiceVol / 100, voice: vm.voice });
+      b.classList.add('on');
+    }
+    return bar;
+  }
+  /* 重写按钮：把这一条挂到顶部重写栏当目标 */
+  function editBtnFor(rec) {
+    if (!rec.voice) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'vbar';
+    var b = document.createElement('button');
+    b.className = 'vplay';
+    b.type = 'button';
+    b.innerHTML = '<span class="ico">✎</span>重写这句';
+    b.addEventListener('click', function () { selectRelay(rec); });
+    wrap.appendChild(b);
+    rec.root.appendChild(wrap);
+  }
+
+  /* 演示模式下的假重写：按方向里的关键词挑一句，看得出"改过"就行。
+     只服务于没接酒馆时的离线演示，真环境永远走 BRIDGE.genRaw。 */
+  function mockRewriteLine(dir) {
+    var d = String(dir || '');
+    if (/慢|拖|缓|拉长/.test(d)) return '[soft tone][气声] 慢、慢一点……再慢一点……';
+    if (/快|急|紧凑|加快/.test(d)) return '[panting] 哈啊……哈啊……太、太快了……';
+    if (/多|长|再说|多一点/.test(d)) return '[panting] 不、不行……你听我说……真的不行了……';
+    if (/少|短|简洁|安静/.test(d)) return '[gasping] ……嗯。';
+    if (/沙哑|哑|低/.test(d)) return '[groaning] 唔……嗓子……哑了……';
+    if (/哭|泪|委屈/.test(d)) return '[sobbing] 呜……别、别这样……求你……';
+    if (/硬|傲|嘴硬|命令|凶/.test(d)) return '[confident] 别出声。撑住，看着我。';
+    if (/求|软|服软/.test(d)) return '[nervous][气声] 求你……我真的不行了……';
+    if (/喘|气/.test(d)) return '[panting] 哈啊……哈……哈啊……哈……';
+    return '[panting] 嗯……不、不行……你等一下……';
+  }
+
+  /* =========================================================
+   * 语气符号模板与自定义试听
+   *
+   * 符号表照着 Fish 官方 Emotion Control 文档整理：音效、情绪、语调三类是官方固定标记，
+   * 中文那一组用的是"括号里可写自然语言"那条规则（Bracket cues can use natural language）。
+   * 点一下复制到剪贴板 —— 不是为了偷懒，是因为方括号在各种输入法里都难打。
+   * ======================================================= */
+  var MARK_TPL = [
+    { mark: '[panting]', cn: '喘', grp: 'fx' },
+    { mark: '[gasping]', cn: '抽气', grp: 'fx' },
+    { mark: '[groaning]', cn: '闷哼', grp: 'fx' },
+    { mark: '[sobbing]', cn: '哽咽', grp: 'fx' },
+    { mark: '[crying loudly]', cn: '大哭', grp: 'fx' },
+    { mark: '[sighing]', cn: '叹息', grp: 'fx' },
+    { mark: '[chuckling]', cn: '轻笑', grp: 'fx' },
+    { mark: '[laughing]', cn: '笑', grp: 'fx' },
+    { mark: '[clear throat]', cn: '清嗓', grp: 'fx' },
+
+    { mark: '[nervous]', cn: '紧张', grp: 'emo' },
+    { mark: '[scared]', cn: '害怕', grp: 'emo' },
+    { mark: '[embarrassed]', cn: '羞', grp: 'emo' },
+    { mark: '[upset]', cn: '委屈', grp: 'emo' },
+    { mark: '[pleased]', cn: '愉悦', grp: 'emo' },
+    { mark: '[satisfied]', cn: '满足', grp: 'emo' },
+    { mark: '[confident]', cn: '笃定', grp: 'emo' },
+    { mark: '[calm]', cn: '平静', grp: 'emo' },
+    { mark: '[sad]', cn: '低落', grp: 'emo' },
+    { mark: '[relaxed]', cn: '放松', grp: 'emo' },
+
+    { mark: '[whispering]', cn: '耳语', grp: 'tone' },
+    { mark: '[soft tone]', cn: '轻声', grp: 'tone' },
+    { mark: '[shouting]', cn: '喊', grp: 'tone' },
+    { mark: '[screaming]', cn: '惊叫', grp: 'tone' },
+    { mark: '[in a hurry tone]', cn: '急促', grp: 'tone' },
+    { mark: '[emphasis]', cn: '重读', grp: 'tone' },
+
+    { mark: '[气声]', cn: '', grp: 'cn' },
+    { mark: '[颤抖]', cn: '', grp: 'cn' },
+    { mark: '[黏腻]', cn: '', grp: 'cn' },
+    { mark: '[压低的声音]', cn: '', grp: 'cn' },
+    { mark: '[破碎的喘息]', cn: '', grp: 'cn' },
+    { mark: '[慵懒]', cn: '', grp: 'cn' },
+    { mark: '[咬牙切齿]', cn: '', grp: 'cn' },
+    { mark: '[带着哭腔]', cn: '', grp: 'cn' },
+    { mark: '[强装镇定]', cn: '', grp: 'cn' },
+    { mark: '[气息不稳]', cn: '', grp: 'cn' },
+
+    { mark: '[break]', cn: '短停', grp: 'pause' },
+    { mark: '[long-break]', cn: '长停', grp: 'pause' }
+  ];
+
+  function drawTags(id, grp) {
+    var box = $('#' + id);
+    if (!box) return;
+    box.innerHTML = '';
+    MARK_TPL.filter(function (m) { return m.grp === grp; }).forEach(function (m) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tag';
+      b.textContent = m.mark;
+      b.title = '点击复制' + (m.cn ? '（' + m.cn + '）' : '');
+      if (m.cn) {
+        var s = document.createElement('b');
+        s.textContent = m.cn;
+        b.appendChild(s);
+      }
+      b.addEventListener('click', function () {
+        var self = this;
+        var done = function () {
+          self.classList.add('ok');
+          setTimeout(function () { self.classList.remove('ok'); }, 900);
+          toast('已复制 ' + m.mark, 1400);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(m.mark).then(done, function () { fallbackCopy(m.mark, done); });
+        } else {
+          fallbackCopy(m.mark, done);
+        }
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function bindCustomSay() {
+    drawTags('tag-fx', 'fx');
+    drawTags('tag-emo', 'emo');
+    drawTags('tag-tone', 'tone');
+    drawTags('tag-cn', 'cn');
+    drawTags('tag-pause', 'pause');
+
+    var ta = $('#s-custom-text');
+    function paintLen() {
+      var box = $('#c-custom-len');
+      if (!box || !ta) return;
+      var n = String(ta.value || '').length;   // 中文按字符数就够用，不折腾码点
+      box.textContent = n + ' 字';
+      var tag = $('#vs-custom-tag');
+      if (tag) tag.textContent = n > 60 ? '偏长' : (n ? '' : '空');
+      box.classList.toggle('on', n > 0);
+    }
+    if (ta) {
+      ta.addEventListener('input', paintLen);
+      // 中文输入法组字过程中不算长度，不然会跳字
+      ta.addEventListener('compositionend', paintLen);
+    }
+    paintLen();
+
+    onEl('#c-custom-clear', 'click', function () {
+      if (ta) { ta.value = ''; paintLen(); ta.focus(); }
+    });
+
+    onEl('#c-custom-say', 'click', function () {
+      if (!ta) return;
+      var txt = String(ta.value || '').trim();
+      if (!txt) { toast('先写一段话'); return; }
+      if (txt.length > 80 && !confirm('这段有 ' + txt.length + ' 字，合成会明显变慢（首字延迟长）。继续吗？')) return;
+      VOC.resume();
+      if (VOC.buzzMode() && S.on) VOC.tick(S.env);
+      if (!VOC.voiceOn()) { toast('语音开关还没开（要在 TTS 语音或两个都要）'); return; }
+      if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
+      if (S.ttsTransport === 'direct' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('直连模式还要填令牌'); return; }
+      // 没写情绪标记也让它能跑：自动补一个，不然短文本会念成朗读腔
+      var line = hasMark(txt) ? txt : (voiceMark(voiceKind(), S.stage) + ' ' + txt);
+      VOC.say(line, { vol: S.voiceVol / 100, voice: S.ttsVoice });
+      VOC.addLog('自定义试听：' + line.slice(0, 40), 'hi');
+      toast('试听：' + line.slice(0, 24), 2200);
+    });
+  }
+
+
+  /* =========================================================
+   * 8b. 语音重写
+   *
+   * 反应页顶部那条输入栏不是用来跟 TA 说话的 —— 它是"这句话该怎么念"的指挥台。
+   * 点某一条的「✎ 重写这句」把它挂成目标，在输入框里写方向（语速更慢一点、
+   * 话再多一点、更沙哑、别求饶），回车就让 AI 重写这一句台词。
+   *
+   * 走 genRaw：不注入角色卡与世界书，只为一句台词花一次短生成。
+   * 代价是不带上下文，所以在提示词里补上角色名与当前阶段，两边都照顾到。
+   * ======================================================= */
+  var RELAY = { target: null };
+
+  function selectRelay(rec) {
+    RELAY.target = rec;
+    rec.root.classList.add('relay-on');
+    var inp = $('#relay-input'), goB = $('#relay-go'), tg = $('#relay-target');
+    if (inp) { inp.disabled = false; inp.focus(); }
+    if (goB) goB.disabled = false;
+    if (tg) {
+      tg.className = 'rtarget on';
+      tg.innerHTML = '要重写的是：<b>' + esc4(tgText(rec)) + '</b>';
+    }
+    var rv = $('#relay-revert'), cc = $('#relay-cancel');
+    if (rv) rv.hidden = !rec.prev;
+    if (cc) cc.hidden = false;
+  }
+
+  function clearRelay() {
+    if (RELAY.target) RELAY.target.root.classList.remove('relay-on');
+    RELAY.target = null;
+    var inp = $('#relay-input'), goB = $('#relay-go'), tg = $('#relay-target');
+    if (inp) { inp.disabled = true; inp.value = ''; }
+    if (goB) goB.disabled = true;
+    if (tg) {
+      tg.className = 'rtarget';
+      tg.textContent = '没选目标 · 点下面任意一条的「✎ 重写这句」';
+    }
+    var rv = $('#relay-revert'), cc = $('#relay-cancel');
+    if (rv) rv.hidden = true;
+    if (cc) cc.hidden = true;
+  }
+
+  function tgText(rec) { return String(rec.voice || rec.text || '').replace(/\[[^\]]*\]\s*/g, '').slice(0, 28); }
+  function esc4(s) {
+    return String(s || '').replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+
+  /* 重写用的提示词。参考信息只给必要的三样（角色名 / 阶段 / 装置状态），
+     不给整张卡 —— 这是 genRaw 的前提。 */
+  function rewritePrompt(cur, dir) {
+    var who = wearerName(true);                 // 被作用者：char 档是角色名，另两档是"你"
+    var kind = voiceKind();
+    var role = (kind === 'tease') ? who + '是操控方，说话带命令与挑逗的口气'
+      : (kind === 'self' ? '没有别人在场，是玩家自己压着声音' : who + '是被作用的一方');
+    var L = [
+      '【任务】重写下面这一句语音台词，只输出改写后的台词本身，不要解释、不要引号、不要换行。',
+      '',
+      '参考：' + role + '。当前第 ' + S.stage + ' 阶段（强度 ' + S.pow + '%，模式 ' + modeById(S.mode).name + '）。',
+      '原句：' + cur,
+      '修改要求：' + dir,
+      '',
+      '硬性要求：',
+      '· 开头先放情绪标记，方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] ' +
+        '[soft tone] [nervous] [confident]）或中文描述（[气声] [颤抖] [黏腻]），最多叠 3 个。',
+      '· 台词 12-18 字最合适，最多 20 字，用省略号和破折号断句。',
+      '· 只写能念出来的话（拟声、短命令、压在喉咙里的碎音），不要写动作、不要写旁白。'
+    ];
+    var warn = voiceish(cur) ? '' : '\n· 注意：原句看起来像旁白而不是台词，改写后必须变成能直接念出来的一句话。';
+    return L.join('\n') + warn;
+  }
+
+  /* 把结果收拾成一句干净台词：剥引号、剥标签注释、压成一行、去标记后算长度 */
+  function tidyLine(t) {
+    t = String(t || '')
+      .replace(/<[^>]{1,40}>/g, ' ')                       // 各种标签
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(/^[\s"'「『]+|[\s"'」』]+$/g, '')            // 首尾引号
+      .replace(/[\r\n]+/g, ' ')                            // 压成一行
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    var bare = t.replace(/\[[^\]]*\]\s*/g, '').trim();
+    return { line: t, bare: bare };
+  }
+
+  function rewriteVoice(dir) {
+    var rec = RELAY.target;
+    if (!rec) return;
+    var inp = $('#relay-input'), goB = $('#relay-go'), tg = $('#relay-target');
+    var oldLabel = goB ? goB.textContent : '';
+    if (goB) { goB.disabled = true; goB.textContent = '生成中…'; }
+    if (tg) tg.innerHTML = '正在让模型重写…（只发一句短提示，不注入角色卡）';
+
+    var res = BRIDGE.genRaw({
+      user_input: rewritePrompt(rec.voice, dir),
+      should_stream: false,
+      should_silence: false
+    });
+    // 没接酒馆（离线演示）时用假的顶上，否则这一页的重写会直接报错、看不出效果
+    var demo = false;
+    if (!res) { res = BRIDGE.mockRaw({ user_input: dir }); demo = true; }
+    if (!res) {
+      if (goB) { goB.disabled = false; goB.textContent = oldLabel; }
+      if (tg) tg.innerHTML = '这个环境没有生成接口，重写用不了';
+      toast('没拿到生成接口');
+      return;
+    }
+
+    var handle = function (text) {
+      if (goB) { goB.disabled = false; goB.textContent = oldLabel; }
+      var o = tidyLine(typeof text === 'string' ? text : (res && res.text) || '');
+      var line = o.line;
+      if (!line) {
+        if (tg) tg.innerHTML = '没生成出内容，再试一次或换个说法';
+        toast('重写失败：空结果');
+        return;
+      }
+      // 太长就截到第一个句末；带了叙述腔就退一层，别把旁白念出来
+      if (o.bare.length > 26) {
+        var cut = line.search(/[。！？!?]/);
+        if (cut > 4 && cut < 40) line = line.slice(0, cut + 1);
+      }
+      if (!voiceish(line) && o.bare.length > 30) {
+        if (tg) tg.innerHTML = '模型这次写成了旁白，没采用 —— 换个说法再试一次';
+        toast('这次写成旁白，没采用');
+        return;
+      }
+      // 落盘：台词换掉，音色与口气按新台词重算（原文可还原）
+      if (!rec.prev) rec.prev = rec.voice;
+      rec.voice = line;
+      lineEl(rec);
+      var bar = rec.root.querySelector('.vbar');
+      if (VOC.voiceOn()) vbarFor(rec, bar, true); else if (bar) bar.remove();
+      if (tg) tg.innerHTML = '已改成：<b>' + esc4(tgText(rec)) + '</b>';
+      var rv = $('#relay-revert');
+      if (rv) rv.hidden = false;
+      if (inp) inp.value = '';
+      scrollFeed();
+      toast(demo ? '台词已重写（演示模式：本地假数据）' : '台词已重写', demo ? 3200 : 2000);
+    };
+
+    if (res && res.then) res.then(handle, function () { handle(''); });
+    else handle('');
+  }
+
+  /* 重写栏的接线 */
+  (function bindRelay() {
+    var form = $('#relay-form');
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var inp = $('#relay-input');
+        var dir = inp ? inp.value.trim() : '';
+        if (!RELAY.target) { toast('先点某一条下面的「✎ 重写这句」'); return; }
+        if (!dir) { toast('写一句修改方向，比如「语速更慢一点」'); return; }
+        rewriteVoice(dir);
+      });
+    }
+    onEl('#relay-cancel', 'click', clearRelay);
+    onEl('#relay-revert', 'click', function () {
+      var rec = RELAY.target;
+      if (!rec || !rec.prev) { toast('这一条没有可还原的原文'); return; }
+      rec.voice = rec.prev;
+      rec.prev = '';
+      lineEl(rec);
+      var bar = rec.root.querySelector('.vbar');
+      if (VOC.voiceOn()) vbarFor(rec, bar, false); else if (bar) bar.remove();
+      this.hidden = true;
+      var tg = $('#relay-target');
+      if (tg) tg.innerHTML = '已还原：<b>' + esc4(tgText(rec)) + '</b>';
+      toast('已还原原来的台词');
+    });
+  })();
 
   /* =========================================================
    * 9. 启停与事件绑定
@@ -3122,6 +4758,7 @@ textarea{
       '把遥控器拿在手里，按下了启动键：' + modeById(S.mode).name + ' 模式，频率 ' + hz().toFixed(1) + ' Hz，强度 ' + S.pow + '%'));
     startSilent();
     HAP.tap([0, 45, 70, 45]);   // 启动：两下，给点仪式感
+    voiceOnStart();             // 语音已开的话，这里把振动音拉起来、顺手预热音集
     // 每一轮重新掷"这次要为难你几回"，2 或 3
     S.beg = 0;
     S.begNeed = 2 + Math.round(Math.random());
@@ -3141,6 +4778,7 @@ textarea{
       : '装置因「' + S.stopReason + '」自行停下，没有人碰遥控器');
     HAP.kill();   // 先把跟随震动掐掉，不然会震完剩下的一段
     AUD.stop();
+    VOC.stopAll();   // 振动音和语音一起收，别让声音留在装置停之后
     S.beg = 0;    // 停了就不用再求了
     paintBeg();
     paintTargetLock();   // 停了，作用对象可以换了
@@ -3300,25 +4938,8 @@ textarea{
     toast('已手动继续：剧情时间恢复流动');
   });
 
-  // 手动对角色说话：走酒馆正常用户楼层，保持上下文连续
-  $('#say-form').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var inp = $('#say-input');
-    var text = inp.value.trim();
-    if (!text) return;
-    inp.value = '';
-    pushMsg('me', text);
-    if (!BRIDGE.ready) { setTimeout(fakeReact, 400); return; }
-    syncVars(true);
-    // 先把自己这句话落进聊天记录，再用面板自己那条通道触发生成。
-    // 以前这里发的是 /trigger —— 那是酒馆自己生成，两个毛病：
-    // 生成期间会被酒馆拦掉，而且结果我们拿不到，解析不出心声，
-    // 面板就一直是空的。改走 floorTrigger 之后，回复同样落库，
-    // 还能顺带拿到这一轮的心声。
-    var p = BRIDGE.addMsg({ role: 'user', message: text });
-    var after = function () { floorTrigger(); };
-    if (p && p.then) p.then(after, after); else after();
-  });
+  // 反应页不再有输入栏：要对 TA 说话就在酒馆自己的输入框里说，
+  // 这里只负责把反应（文字 + 语音）摆出来。原来的 say-form 处理整段撤掉了。
 
   $('#c-sync').addEventListener('click', function () {
     if (syncVars(false)) toast('已写入聊天变量');
@@ -3591,6 +5212,724 @@ textarea{
           : '已切换：遥控器回到你手里'), 2600);
     }
   }
+  /* =========================================================
+   * 语音设置页（VOC）
+   *
+   * 两种传输方式，令牌归属不同：
+   *   经本机转发（默认）→ 面板不带令牌，令牌在转发脚本那边，不进聊天记录
+   *   直连中转         → URL + 令牌都填在面板里，令牌随聊天变量存档
+   * 默认走前者，是因为后者会把密钥写进聊天文件和页面里。
+   * ======================================================= */
+  function paintVoice() {
+    var btn = $('#s-voice');
+    if (btn) btn.textContent = VOICE_LABEL[S.voice] || '关';
+
+    // 配置齐了没有 —— 一个地方算清楚，三处文案都用它，免得各说各话。
+    // 直连还要看令牌：没令牌时 FETCH 会直接失败，不如提前说清。
+    var needTts = (S.voice === 'tts' || S.voice === 'both');
+    var direct = (S.ttsTransport === 'direct');
+    var missing = [];
+    if (needTts) {
+      if (!S.ttsTarget) missing.push('合成地址');
+      if (!direct && !S.ttsProxy) missing.push('转发地址');
+      if (direct && S.ttsAuth !== 'none' && !S.ttsKey) missing.push('令牌');
+    }
+    var ready = missing.length === 0;
+    var missText = missing.join('、');
+
+    var tag = $('#voice-tag');
+    if (tag) {
+      tag.textContent = (S.voice === 'off') ? ''
+        : (S.voice === 'buzz' ? '未测试' : (ready ? 'TTS' : '待配置'));
+    }
+    var vsTag = $('#vs-tag');
+    if (vsTag) {
+      vsTag.textContent = (S.voice === 'off') ? '未开'
+        : (S.voice === 'buzz' ? '未测试' : (ready ? '已配置' : '待配置'));
+    }
+    var vsLine = $('#vs-line');
+    if (vsLine) {
+      vsLine.innerHTML = '当前：<b style="color:var(--cyan)">' + (VOICE_LABEL[S.voice] || '关') + '</b>　'
+        + (VOICE_NOTE[S.voice] || '')
+        + (needTts && !ready
+          ? '<br><b style="color:var(--amber)">还差：' + esc4(missText) + '（'
+            + (direct ? '直连' : '经本机转发') + '）</b>'
+          : '')
+        + (needTts && ready && direct
+          ? '<br><b style="color:var(--amber)">直连模式：令牌随聊天变量存档，注意环境。</b>'
+          : '');
+    }
+    var note = $('#s-voiceai-note');
+    if (note) {
+      note.innerHTML = S.voiceAI
+        ? '<b>当前：AI 生成。</b>随正文一起写一句「语音」进来，不多花一次额度；拿不到就自动退回台词库。'
+        : '<b>当前：台词库。</b>零费用、零延迟，台词按阶段与作用对象取，每句自动配情绪标记；'
+          + '打开 AI 生成则改为让模型写，更贴但更慢。';
+    }
+    // 设置页那条只是"怎么开"的入口提示，每次刷新都按当前状态重写
+    var h = $('#voice-hint');
+    if (h) {
+      h.textContent = (S.voice === 'off')
+        ? '语音目前是关的。开关、音色、合成地址都在「语音设置」页里。'
+        : (needTts && !ready
+          ? '当前是「' + VOICE_LABEL[S.voice] + '」，还差：' + missText + ' —— 去「语音设置」页补上。'
+          : '当前是「' + VOICE_LABEL[S.voice] + '」。要调参数或试听，去「语音设置」页。');
+    }
+  }
+
+  var AUTH_LABEL = { bearer: 'Bearer', raw: '裸 Authorization', 'x-api-key': 'x-api-key', none: '不带' };
+  var AUTH_ORDER = ['bearer', 'raw', 'x-api-key', 'none'];
+
+  function paintTransport() {
+    var direct = (S.ttsTransport === 'direct');
+    var b = $('#s-transport');
+    if (b) b.textContent = direct ? '直连中转' : '经本机转发';
+    var rb = $('#s-relay-box'); if (rb) rb.style.display = direct ? 'none' : 'block';
+    var db = $('#s-direct-box'); if (db) db.style.display = direct ? 'block' : 'none';
+    var note = $('#s-transport-note');
+    if (note) {
+      /* relay 那一档只在"直连被跨域拦下"时才需要，所以文案里不把它写成必经步骤 */
+    note.innerHTML = direct
+        ? '<b>直连中转：</b>面板直接打到中转，不需要任何本机脚本。'
+          + '要填两样：合成地址、令牌。'
+          + '<br>如果中转没开跨域（错误里会写 Failed to fetch），再切到「经本机转发」。'
+        : '<b>经本机转发：</b>合成请求先发到本机脚本，再由它打到中转 —— '
+          + '用来绕开"中转没开跨域"的情况。这条路要另跑一个 Node 脚本。';
+    }
+    var ab = $('#s-tts-authstyle');
+    if (ab) ab.textContent = AUTH_LABEL[S.ttsAuth] || 'Bearer';
+    var ch = $('#s-conn-hint');
+    if (ch) {
+      ch.innerHTML = direct
+        ? '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
+          + '另外直连默认会被浏览器跨域拦下（Fish 官方与不少中转没开 CORS）——'
+          + '真被拦时错误里会写 Failed to fetch，那时切回经本机转发即可。'
+        : '令牌不进聊天记录：它在转发脚本那边（<code>relay-key.txt</code>）。'
+          + '面板里这一格留空也能用。';
+    }
+  }
+
+  function bindVoice() {
+    var v = $('#s-voice'); if (v) v.textContent = VOICE_LABEL[S.voice] || '关';
+    var m = $('#s-tts-model'); if (m) m.value = S.ttsModel || '';
+    var vc = $('#s-tts-voice'); if (vc) vc.value = S.ttsVoice || '';
+    var tg = $('#s-tts-target'); if (tg) tg.value = S.ttsTarget || '';
+    var px = $('#s-tts-proxy'); if (px) px.value = S.ttsProxy || '';
+    var ky = $('#s-tts-key'); if (ky) ky.value = S.ttsKey || '';
+    var mh = $('#s-tts-modelhdr'); if (mh) mh.value = S.ttsModelHdr || 'model';
+    var rf = $('#s-tts-reffield'); if (rf) rf.value = S.ttsRefField || 'reference_id';
+    var ex = $('#s-tts-extra'); if (ex) ex.value = S.ttsExtraHdrs || '';
+    var la = $('#s-tts-latency'); if (la) la.textContent = S.ttsLatency || 'low';
+    var nm = $('#s-tts-nomodel'); if (nm) nm.classList.toggle('on', !!S.ttsNoModelHdr);
+    var fm = $('#s-tts-format'); if (fm) fm.textContent = S.ttsFormat;
+    var vol = $('#s-voicevol'); if (vol) vol.value = S.voiceVol;
+    var spd = $('#s-tts-speed'); if (spd) spd.value = S.ttsSpeed;
+    var ai = $('#s-voiceai'); if (ai) ai.textContent = S.voiceAI ? 'AI 生成' : '台词库';
+    var swa = $('#s-voiceauto'); if (swa) swa.classList.toggle('on', S.voiceAuto);
+    var sww = $('#s-voicewarm'); if (sww) sww.classList.toggle('on', S.voiceWarm);
+    paintTransport();
+    paintVoice();
+  }
+
+  function onEl(sel, evt, fn) {
+    var e = $(sel);
+    if (e) e.addEventListener(evt, fn);
+  }
+
+  function warmVoice() {
+    if (!VOC.voiceOn()) { toast('先打开 TTS 语音'); return; }
+    var kind = voiceKind();
+    var list = [];
+    for (var s = 1; s <= 5; s++) list.push(fillName(libPick(kind, s)));
+    var h = $('#voice-hint');
+    if (h) h.textContent = '正在预热 ' + list.length + ' 条…';
+    VOC.warm(list).then(function (n) {
+      if (h) { h.textContent = '预热完成：' + n + ' 条已缓存，之后播这些不再联网。'; h.dataset.done = '1'; }
+      toast('音集预热完成：' + n + ' 条');
+    });
+  }
+
+  // 语音开关：四档循环（关 → TTS 语音 → 两个都要 → 振动音，见 VOICE_IDS）
+  onEl('#s-voice', 'click', function () {
+    var i = VOICE_IDS.indexOf(S.voice);
+    S.voice = VOICE_IDS[(i + 1) % VOICE_IDS.length];
+    bindVoice();
+    persist();
+    if (S.voice === 'off') { VOC.stopAll(); toast('语音已关闭'); return; }
+    VOC.resume();
+    if (VOC.buzzMode() && S.on) VOC.tick(S.env);
+    if (S.voice === 'buzz') {
+      toast('振动音是未测试项：只在装置运行时出声，慎用', 3000);
+    } else {
+      toast('语音：' + VOICE_LABEL[S.voice]);
+      if (!S.ttsTarget) toast('还要填「合成地址」才能真正念出来', 3000);
+      else if (S.voiceWarm) warmVoice();
+    }
+  });
+
+  onEl('#c-voice-warm', 'click', warmVoice);
+
+  /* =========================================================
+   * 试听选择器：从台词库里挑一句来试音色
+   *
+   * 三级联动：分类 → 档位 → 句子。改音色或语速之后用它对比最省事，
+   * 不必等装置跑起来。里面显示的文本就是真正会送去合成的那一串（含情绪标记）。
+   * ======================================================= */
+  function libSelGet() {
+    var k = $('#s-voice-kind');
+    var s = $('#s-voice-stage');
+    var l = $('#s-voice-line');
+    return {
+      kind: (k && k.value) || 'moan',
+      stage: parseInt((s && s.value) || '3', 10) || 3,
+      idx: parseInt((l && l.value) || '0', 10) || 0
+    };
+  }
+
+  function paintLibStage() {
+    var sel = $('#s-voice-stage');
+    if (!sel) return;
+    var cur = libSelGet();
+    var kind = cur.kind;
+    sel.innerHTML = '';
+    if (kind === 'beg') {
+      var o = document.createElement('option');
+      o.value = '1';
+      o.textContent = '不分档（求停时的一句话）';
+      sel.appendChild(o);
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      for (var s = 1; s <= 5; s++) {
+        var op = document.createElement('option');
+        op.value = String(s);
+        op.textContent = '第 ' + s + ' 档 · ' + STAGES[s - 1].name;
+        sel.appendChild(op);
+      }
+      sel.value = String(clamp(cur.stage, 1, 5));
+    }
+    var note = $('#s-voice-stage-note');
+    if (note) {
+      note.textContent = (kind === 'beg')
+        ? '这一支是玩家请求停下时 TA 的应答，与强度档位无关。'
+        : '档位决定用哪一组句子（越往后越失控）。';
+    }
+  }
+
+  function paintLibLines() {
+    var sel = $('#s-voice-line');
+    if (!sel) return;
+    var cur = libSelGet();
+    var n = (cur.kind === 'beg') ? VOICE_LIB.beg.length : libStagePool(cur.kind, cur.stage).length;
+    if (!n) n = 1;
+    sel.innerHTML = '';
+    for (var i = 0; i < n; i++) {
+      var o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = libLineAt(cur.kind, cur.stage, i);
+      sel.appendChild(o);
+    }
+    sel.value = String(clamp(cur.idx, 0, n - 1));
+    paintLibNote();
+  }
+
+  var VoiceKindCount = '';
+  function paintLibNote() {
+    var cur = libSelGet();
+    var line = libLineAt(cur.kind, cur.stage, cur.idx);
+    var tag = $('#vs-text-tag');
+    if (tag) tag.textContent = VoiceKindCount;
+    var note = $('#vs-preview-note');
+    if (note) {
+      note.innerHTML = '这一句：<b style="color:var(--cyan)">' + esc4(line) + '</b>'
+        + '<br>台词库共 ' + VoiceKindCount + '（呻吟 17 · 调教 14 · 自己玩 10 · 求停 4）。'
+        + '情绪标记是每条随机取的，换一句可能配到别的标记。';
+    }
+  }
+
+  (function initLibPicker() {
+    var k = $('#s-voice-kind');
+    if (!k) return;
+    var total = 0;
+    ['moan', 'tease', 'self'].forEach(function (kk) {
+      for (var s = 1; s <= 5; s++) total += libStagePool(kk, s).length;
+    });
+    total += VOICE_LIB.beg.length;
+    VoiceKindCount = total + ' 句';
+    k.innerHTML = '';
+    var order = ['moan', 'tease', 'self', 'beg'];
+    order.forEach(function (kk) {
+      var o = document.createElement('option');
+      o.value = kk;
+      var cnt = (kk === 'beg') ? VOICE_LIB.beg.length
+        : (function () { var n = 0; for (var s = 1; s <= 5; s++) n += libStagePool(kk, s).length; return n; })();
+      o.textContent = (VOICE_KIND_LABEL[kk] || kk) + ' · ' + cnt + ' 句';
+      k.appendChild(o);
+    });
+    k.value = voiceKind();          // 默认跟着当前档位走，跳过去就能试当下这一档
+    if (libSelGet().kind !== k.value) k.value = 'moan';
+    paintLibStage();
+    paintLibLines();
+  })();
+
+  onEl('#s-voice-kind', 'change', function () { paintLibStage(); paintLibLines(); });
+  onEl('#s-voice-stage', 'change', function () { paintLibLines(); });
+  onEl('#s-voice-line', 'change', function () { paintLibNote(); });
+
+  function previewLibLine(advance) {
+    var cur = libSelGet();
+    if (advance) {
+      var n = (cur.kind === 'beg') ? VOICE_LIB.beg.length : libStagePool(cur.kind, cur.stage).length;
+      cur.idx = (cur.idx + 1) % Math.max(1, n);
+      var sel = $('#s-voice-line');
+      if (sel) sel.value = String(cur.idx);
+      paintLibNote();
+    }
+    var line = libLineAt(cur.kind, cur.stage, cur.idx);
+    VOC.resume();
+    if (VOC.buzzMode() && S.on) VOC.tick(S.env);
+    if (VOC.voiceOn()) {
+      if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
+      if (S.ttsTransport === 'direct' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('直连模式还要填令牌'); return; }
+      var v = S.ttsVoice;
+      VOC.say(line, { vol: S.voiceVol / 100, voice: v });
+      toast('试听：' + line.slice(0, 24));
+    } else {
+      toast('语音开关还没开（要在 TTS 语音或两个都要）');
+    }
+  }
+  onEl('#c-preview-line', 'click', function () { previewLibLine(false); });
+  onEl('#c-preview-next', 'click', function () { previewLibLine(true); });
+
+  /* 连通性检查：空文本探一次。它不产生合成计费，却能把四种情况分开 ——
+     跨域被拦 / 鉴权失败 / 路由不存在 / 只是参数不合法（那说明前两关都过了）。
+     两种传输方式都走这一条，只是打出去的地址不同。 */
+  function voicePing() {
+    var h = $('#vs-hint');
+    function say(msg, cls) {
+      if (h) h.textContent = msg;
+      VOC.addLog('[检查] ' + msg, cls || (/连不上|拦下|失败|不对|404|401|403|超时|没填/.test(msg) ? 'err'
+        : (/过了|通了|可以试听/.test(msg) ? 'ok' : 'hi')));
+    }
+    var direct = (S.ttsTransport === 'direct');
+    VOC.addLog('=== 连通性检查开始（' + (direct ? '直连中转' : '经本机转发') + '）===', 'hi');
+    if (!S.ttsTarget) { say('还没填「合成地址」。'); toast('先填合成地址'); return Promise.resolve(false); }
+
+    var url = direct ? S.ttsTarget : (S.ttsProxy || '');
+    if (!direct && !S.ttsProxy) { say('转发地址是空的。「转发地址」那一格填 http://127.0.0.1:8799/v1/tts'); toast('缺转发地址'); return Promise.resolve(false); }
+    if (direct && S.ttsAuth !== 'none' && !S.ttsKey) { say('直连模式要填令牌（或把鉴权改成「不带」）。'); toast('缺令牌'); return Promise.resolve(false); }
+
+    say('正在检查（' + (direct ? '直连中转' : '经本机转发') + '）…', 'hi');
+    VOC.addLog('打 ' + url + '（空文本，不产生合成计费）', 'hi');
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function () { ctl.abort(); }, 12000) : null;
+    var t0 = Date.now();
+    var headers = { 'Content-Type': 'application/json' };
+    if (direct) {
+      if (S.ttsAuth === 'x-api-key' && S.ttsKey) headers['x-api-key'] = S.ttsKey;
+      else if (S.ttsAuth === 'raw' && S.ttsKey) headers['Authorization'] = S.ttsKey;
+      else if (S.ttsAuth !== 'none' && S.ttsKey) headers['Authorization'] = 'Bearer ' + S.ttsKey;
+      if (S.ttsModel && !S.ttsNoModelHdr) headers[S.ttsModelHdr || 'model'] = S.ttsModel;
+      var exRaw = String(S.ttsExtraHdrs || '').trim();
+      if (exRaw) { try { var ex = JSON.parse(exRaw) || {}; Object.keys(ex).forEach(function (k) { headers[k] = String(ex[k]); }); } catch (e) { /* 忽略 */ } }
+    } else {
+      headers['x-toylink-target'] = S.ttsTarget;
+      if (S.ttsModel) headers['x-toylink-model'] = S.ttsModel;
+      if (S.ttsModelHdr && S.ttsModelHdr !== 'model') headers['x-toylink-modelheader'] = S.ttsModelHdr;
+      if (S.ttsNoModelHdr) headers['x-toylink-noheaders'] = '1';
+      if (S.ttsAuth && S.ttsAuth !== 'bearer') headers['x-toylink-auth'] = S.ttsAuth;
+      var exRaw2 = String(S.ttsExtraHdrs || '').trim();
+      if (exRaw2) headers['x-toylink-extra'] = exRaw2;
+    }
+
+    return fetch(url, {
+      method: 'POST', headers: headers,
+      body: JSON.stringify({ text: '', format: S.ttsFormat }),
+      signal: ctl ? ctl.signal : undefined
+    }).then(function (r) {
+      if (timer) clearTimeout(timer);
+      var ms = Date.now() - t0;
+      var ct = r.headers.get('content-type') || '';
+      if (r.ok && ct.indexOf('json') < 0) {
+        say('通到上游了（' + r.status + ' · ' + ms + 'ms）—— 可以直接试听。', 'ok');
+        return true;
+      } else if (r.status === 400 || r.status === 422) {
+        // 参数不合法 = 通道与密钥都过了，只是空文本被拒。这正是我们要看到的。
+        say('通道与鉴权都过了（上游回 ' + r.status + '，因为空文本被拒）—— 可以试听。', 'ok');
+        return true;
+      } else if (r.status === 401 || r.status === 403) {
+        say(direct
+          ? '鉴权失败（' + r.status + '）：检查令牌与「鉴权方式」是不是和中转文档一致。'
+          : '路由通了，但令牌不对（' + r.status + '）。检查转发脚本那边的 relay-key.txt。', 'err');
+      } else if (r.status === 404) {
+        say('404：合成地址的路径不对。检查中转文档给的确是 /v1/tts 还是别的路径。', 'err');
+      } else {
+        say('上游回 ' + r.status + '：看运行日志里那条 REST 的响应内容', 'err');
+      }
+      return r.text().then(function (tx) {
+        if (tx && tx.length && /error|message|ok|detail/i.test(tx)) {
+          VOC.addLog('响应体：' + String(tx).slice(0, 220), 'err');
+        }
+        return false;
+      }, function () { return false; });
+    }).catch(function (e) {
+      if (timer) clearTimeout(timer);
+      var msg = (e && e.name === 'AbortError') ? '超时（12 秒）' : ((e && e.message) || String(e));
+      if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+        say(direct
+          ? '直连被拦下了。多半是中转没开跨域（CORS）—— 用上面的「两种方式都试一次」比一下，或用「经本机转发」。'
+          : '连不上转发脚本。先在命令行跑 node 工具-转发.js，确认提示「已就绪」再回来。', 'err');
+      } else {
+        say('检查失败：' + msg, 'err');
+      }
+      return false;
+    });
+  }
+  onEl('#c-voice-ping', 'click', voicePing);
+
+  /* 两种方式都试一次：同一份配置，换通道各打一次，差别立刻看得出来
+     （多半是直连被跨域拦）。只探不通，不改用户当前选的传输方式。 */
+  function voicePingBoth() {
+    var keep = S.ttsTransport;
+    var h = $('#vs-hint');
+    if (h) h.textContent = '先测直连…';
+    VOC.addLog('=== 对比检查：先直连中转 ===', 'hi');
+    S.ttsTransport = 'direct';
+    voicePing().then(function (dOk) {
+      VOC.addLog('=== 对比检查：再经本机转发 ===', 'hi');
+      S.ttsTransport = 'relay';
+      voicePing().then(function (rOk) {
+        S.ttsTransport = keep;      // 探完还原，不动用户的选择
+        var msg = (dOk && rOk) ? '两种方式都通 —— 直连更省事，保持直连即可。'
+          : (dOk ? '只有直连通（转发脚本没跑或没配令牌）。'
+            : (rOk ? '只有本机转发通 —— 直连被跨域拦了，这就是差别所在。建议切到「经本机转发」。'
+              : '两种都不通：先确认合成地址、令牌（或 relay-key.txt）是不是对的。'));
+        if (h) h.textContent = msg;
+        VOC.addLog('对比结果：直连=' + (dOk ? '通' : '不通') + '，转发=' + (rOk ? '通' : '不通') + '。' + msg, (dOk || rOk) ? 'ok' : 'err');
+        toast(msg, 4000);
+      });
+    });
+  }
+  onEl('#c-voice-ping2', 'click', voicePingBoth);
+
+  onEl('#c-voice-test', 'click', function () {
+    if (S.voice === 'off') { toast('先把语音开关打开（至少要 TTS 语音）'); return; }
+    VOC.resume();
+    if (VOC.buzzMode() && S.on) VOC.tick(S.env);
+    if (VOC.voiceOn()) {
+      if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
+      var pick = voiceFor('', S.stage);
+      var h = $('#vs-hint');
+      if (h) {
+        h.textContent = '测试台词：' + pick.text + '（'
+          + (pick.kind === 'tease' ? '调教对白' : (pick.kind === 'self' ? '自己玩 · 气音' : '呻吟')) + '）';
+        h.dataset.done = '1';
+      }
+      VOC.say(pick.text, { vol: S.voiceVol / 100, voice: pick.voice });
+    } else {
+      toast('振动音已开：启动装置就能听到');
+    }
+  });
+
+  onEl('#c-voice-clear', 'click', function () {
+    VOC.clearCache().then(function () { toast('语音缓存已清空'); });
+  });
+
+  // 设置页那条只是入口，真正调参数在语音页
+  onEl('#c-goto-voice', 'click', function () { go('voice'); });
+
+  /* ---- 运行日志：复制 / 清空 ---- */
+  onEl('#c-log-clear', 'click', function () {
+    VOC.clearLog();
+    toast('日志已清空');
+  });
+  onEl('#c-log-copy', 'click', function () {
+    var t = VOC.logText();
+    if (!t) { toast('日志是空的'); return; }
+    var done = function () { toast('日志已复制（' + VOC.logCount() + ' 条）'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(done, function () { fallbackCopy(t, done); });
+    } else fallbackCopy(t, done);
+  });
+
+  /* =========================================================
+   * 合成记录：分页浏览 + 单条下载 + 打包下载 + 清空
+   *
+   * 数据源就是音频缓存本身，所以"清空记录"和「清空语音缓存」是同一件事 ——
+   * 界面上两处按钮文案写清这一点，免得以为是两份数据。
+   * ======================================================= */
+  var AUD_PAGE = 0, AUD_PER = 6;
+
+  function fmtClock(ms) {
+    var d = new Date(ms || 0);
+    return pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function fmtBytes(n) {
+    n = n || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1048576).toFixed(2) + ' MB';
+  }
+  /* 用的就是合成时那份 meta —— 显示的和实际发出去的一致，不另存一份 */
+  function recLine(rec) {
+    return String((rec.meta && rec.meta.text) || '（无文本）').replace(/\s+/g, ' ').trim();
+  }
+  function recVoice(rec) {
+    var v = (rec.meta && rec.meta.voice) || '';
+    return v ? ('音色 ' + v.slice(0, 12)) : '默认音色';
+  }
+
+  function paintAudioList() {
+    if (!$('#vs-list')) return;
+    VOC.listAll().then(function (all) {
+      var total = all.length;
+      var pages = Math.max(1, Math.ceil(total / AUD_PER));
+      if (AUD_PAGE > pages - 1) AUD_PAGE = pages - 1;
+      if (AUD_PAGE < 0) AUD_PAGE = 0;
+
+      var cnt = $('#vs-list-count');
+      if (cnt) cnt.textContent = total ? (total + ' 条') : '';
+      var info = $('#vs-page-info');
+      if (info) info.textContent = total ? ('共 ' + total + ' 条 · 第 ' + (AUD_PAGE + 1) + ' / ' + pages + ' 页') : '共 0 条';
+      var prev = $('#c-page-prev'), next = $('#c-page-next');
+      // 空列表时两个都禁掉：页数按 max(1,...) 算出来是 1，光比下标会误判成可翻
+      if (prev) prev.disabled = (total === 0 || AUD_PAGE <= 0);
+      if (next) next.disabled = (total === 0 || AUD_PAGE >= pages - 1);
+
+      var box = $('#vs-list');
+      if (!box) return;
+      if (!total) {
+        box.innerHTML = '<div class="lgdim" style="padding:10px 0">（还没有合成记录）</div>';
+        return;
+      }
+      box.innerHTML = '';
+      all.slice(AUD_PAGE * AUD_PER, AUD_PAGE * AUD_PER + AUD_PER).forEach(function (rec) {
+        var row = document.createElement('div');
+        row.className = 'recl';
+        var m = document.createElement('div');
+        m.className = 'm';
+        var t = document.createElement('div');
+        t.className = 't';
+        t.textContent = recLine(rec);
+        var s = document.createElement('div');
+        s.className = 's';
+        s.textContent = fmtClock(rec.at) + ' · ' + recVoice(rec) + ' · '
+          + fmtBytes(rec.blob ? rec.blob.size : 0);
+        m.appendChild(t); m.appendChild(s);
+
+        var pb = document.createElement('button');
+        pb.type = 'button';
+        pb.className = 'b';
+        pb.textContent = '播';
+        pb.addEventListener('click', function () {
+          if (!rec.blob) { toast('这条音频已不在本地'); return; }
+          VOC.resume();
+          VOC.play(rec.blob, { vol: S.voiceVol / 100, voice: (rec.meta && rec.meta.voice) || S.ttsVoice });
+          VOC.addLog('回放记录：' + recLine(rec).slice(0, 30), 'hi');
+        });
+
+        var db = document.createElement('button');
+        db.type = 'button';
+        db.className = 'b';
+        db.textContent = '存';
+        db.addEventListener('click', function () {
+          saveOne(rec);
+        });
+
+        row.appendChild(m); row.appendChild(pb); row.appendChild(db);
+        box.appendChild(row);
+      });
+    });
+  }
+
+  /* 单条落盘 */
+  function saveOne(rec) {
+    if (!rec.blob) { toast('这条音频已不在本地'); return; }
+    try {
+      var url = URL.createObjectURL(rec.blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'toylink-' + safeName(recLine(rec).slice(0, 20)) + '-'
+        + (rec.id || 'x') + '.' + ((rec.meta && rec.meta.format) || S.ttsFormat || 'mp3');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 8000);
+      toast('已保存：' + a.download);
+    } catch (e) {
+      toast('保存失败：' + ((e && e.message) || e));
+    }
+  }
+
+  /* 全部落盘：在浏览器里自己打一个 zip（stored，不压缩） */
+  function packAll() {
+    VOC.listAll().then(function (all) {
+      if (!all.length) { toast('还没有可打包的音频'); return; }
+      VOC.addLog('开始打包 ' + all.length + ' 条音频…', 'hi');
+      var items = [];
+      var chain = Promise.resolve();
+      all.forEach(function (rec) {
+        chain = chain.then(function () {
+          return rec.blob.arrayBuffer().then(function (buf) {
+            items.push({ name: safeName(recLine(rec).slice(0, 20)) + '-' + rec.id + '.' + ((rec.meta && rec.meta.format) || 'mp3'), data: new Uint8Array(buf) });
+          }, function () { /* 单条读失败就跳过 */ });
+        });
+      });
+      return chain.then(function () {
+        if (!items.length) { toast('打包失败：没有可读的音频'); return; }
+        var bytes = zipBuild(items);
+        var blob = new Blob([bytes], { type: 'application/zip' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'toylink-voice-' + all.length + '.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 12000);
+        VOC.addLog('打包完成：' + items.length + ' 个文件，' + fmtBytes(bytes.length), 'ok');
+        toast('已打包 ' + items.length + ' 条（' + fmtBytes(bytes.length) + '）', 3200);
+      });
+    });
+  }
+
+  onEl('#c-page-prev', 'click', function () { AUD_PAGE--; paintAudioList(); });
+  onEl('#c-page-next', 'click', function () { AUD_PAGE++; paintAudioList(); });
+  onEl('#c-audio-zip', 'click', packAll);
+  onEl('#c-audio-clear', 'click', function () {
+    if (!confirm('清空全部合成记录？\n这也等于清空语音缓存 —— 之后播同样的句子会重新联网合成。')) return;
+    VOC.clearCache().then(function () {
+      AUD_PAGE = 0;
+      paintAudioList();
+      VOC.addLog('合成记录已清空', 'warn');
+      toast('记录已清空');
+    });
+  });
+
+  // 输入框：边打边存，切走再确认一次，避免手机上输入法不触发 change
+  function bindText(sel, key, isNum) {
+    var el = $(sel);
+    if (!el) return;
+    var apply = function () {
+      if (isNum) {
+        var n = parseFloat(el.value);
+        S[key] = isFinite(n) ? clamp(n, key === 'ttsSpeed' ? 0.5 : 0, key === 'ttsSpeed' ? 1.5 : 100) : S[key];
+        el.value = S[key];
+      } else {
+        S[key] = String(el.value || '').trim();
+      }
+      persist();
+      paintVoice();
+    };
+    el.addEventListener('input', apply);
+    el.addEventListener('change', apply);
+    el.addEventListener('blur', apply);
+  }
+  bindText('#s-tts-target', 'ttsTarget');
+  bindText('#s-tts-proxy', 'ttsProxy');
+  bindText('#s-tts-key', 'ttsKey');
+  bindText('#s-tts-voice', 'ttsVoice');
+  bindText('#s-tts-model', 'ttsModel');
+  bindText('#s-tts-modelhdr', 'ttsModelHdr');
+  bindText('#s-tts-reffield', 'ttsRefField');
+  bindText('#s-tts-extra', 'ttsExtraHdrs');
+  bindText('#s-tts-speed', 'ttsSpeed', true);
+  bindText('#s-voicevol', 'voiceVol', true);
+
+  // 延迟档：三档循环
+  var LAT_ORDER = ['low', 'balanced', 'normal'];
+  onEl('#s-tts-latency', 'click', function () {
+    var i = LAT_ORDER.indexOf(S.ttsLatency);
+    S.ttsLatency = LAT_ORDER[(i + 1) % LAT_ORDER.length];
+    this.textContent = S.ttsLatency;
+    persist();
+    toast('延迟档：' + S.ttsLatency + (S.ttsLatency === 'normal' ? '（质量优先，慢）' : ''));
+  });
+  // 不发 model 头
+  (function () {
+    var el = $('#s-tts-nomodel');
+    if (!el) return;
+    el.classList.toggle('on', !!S.ttsNoModelHdr);
+    el.addEventListener('click', function () {
+      S.ttsNoModelHdr = !S.ttsNoModelHdr;
+      el.classList.toggle('on', S.ttsNoModelHdr);
+      persist();
+      toast(S.ttsNoModelHdr ? '不再发送 model 请求头' : '恢复发送 model 请求头');
+    });
+  })();
+  // 额外请求头：填错 JSON 时立刻说，别等到请求失败才发现
+  onEl('#s-tts-extra', 'blur', function () {
+    var v = String(this.value || '').trim();
+    if (!v) return;
+    try { JSON.parse(v); }
+    catch (e) { toast('额外请求头不是合法 JSON，会被忽略', 3200); }
+  });
+
+  // 传输方式：两档切换，切了就把该显示的那组字段亮出来
+  onEl('#s-transport', 'click', function () {
+    S.ttsTransport = (S.ttsTransport === 'direct') ? 'relay' : 'direct';
+    paintTransport();
+    persist();
+    if (S.ttsTransport === 'direct') {
+      toast('直连中转：要填令牌；若被跨域拦下就切回来');
+    } else {
+      toast('经本机转发：令牌放转发脚本那边');
+    }
+  });
+  // 鉴权方式：四档循环
+  onEl('#s-tts-authstyle', 'click', function () {
+    var i = AUTH_ORDER.indexOf(S.ttsAuth);
+    S.ttsAuth = AUTH_ORDER[(i + 1) % AUTH_ORDER.length];
+    paintTransport();
+    persist();
+    toast('鉴权方式：' + AUTH_LABEL[S.ttsAuth]);
+  });
+  // 令牌显示/隐藏：默认遮住，点了才明文（用于确认粘贴没被截断）
+  onEl('#c-eye-key', 'click', function () {
+    var el = $('#s-tts-key');
+    if (!el) return;
+    var show = (el.type === 'password');
+    el.type = show ? 'text' : 'password';
+    this.textContent = show ? '隐藏' : '显示';
+    this.classList.toggle('on', show);
+    if (show) { try { el.focus(); } catch (e) { /* noop */ } }
+  });
+
+  onEl('#s-tts-format', 'click', function () {
+    S.ttsFormat = (S.ttsFormat === 'mp3') ? 'wav' : (S.ttsFormat === 'wav' ? 'opus' : 'mp3');
+    this.textContent = S.ttsFormat;
+    persist();
+  });
+  onEl('#s-voiceai', 'click', function () {
+    S.voiceAI = !S.voiceAI;
+    bindVoice();
+    persist();
+    toast(S.voiceAI ? '台词改为 AI 生成（贴近角色，但要等）' : '台词改回本地库');
+  });
+  function voiceSwitch(sel, key) {
+    var el = $(sel);
+    if (!el) return;
+    el.classList.toggle('on', !!S[key]);
+    el.addEventListener('click', function () {
+      S[key] = !S[key];
+      el.classList.toggle('on', S[key]);
+      persist();
+    });
+  }
+  voiceSwitch('#s-voiceauto', 'voiceAuto');
+  voiceSwitch('#s-voicewarm', 'voiceWarm');
+
+  bindVoice();
+  bindCustomSay();   // 语气符号模板 + 自定义试听（放在 bindVoice 之后：用到 S.ttsVoice 等已恢复的值）
+
+  /* 启动装置时顺手预热，免得第一次听到要等。三档共用，音色和口气按当前档位取。 */
+  function voiceOnStart() {
+    if (!S.on || S.voice === 'off') return;
+    VOC.resume();
+    if (VOC.buzzMode()) VOC.tick(S.env);
+    if (VOC.voiceOn() && S.voiceWarm && S.ttsTarget) warmVoice();
+  }
+
   $('#s-inject').addEventListener('click', function () { S.inject = !S.inject; bindSettings(); persist(); });
   $('#s-auto').addEventListener('click', function () {
     S.auto = !S.auto;
@@ -3755,13 +6094,14 @@ textarea{
     go(b.dataset.go);
   });
   function go(view) {
-    ['device', 'chat', 'config'].forEach(function (v) {
+    ['device', 'chat', 'voice', 'config'].forEach(function (v) {
       $('#v-' + v).hidden = (v !== view);
     });
     var ts = document.querySelectorAll('.tab');
     for (var i = 0; i < ts.length; i++) ts[i].classList.toggle('on', ts[i].dataset.go === view);
     if (view === 'chat') scrollFeed();
     if (view === 'device') setTimeout(fitCanvas, 30);
+    if (view === 'voice') { paintVoice(); VOC.repaintLog(); paintAudioList(); }
     if (view === 'config') { lastStatePaint = Date.now(); $('#state-box').value = stateText(); }
   }
 
@@ -3792,7 +6132,27 @@ textarea{
       toy_cfg_audio: S.audio,
       toy_cfg_mode: S.mode,
       toy_cfg_freq: S.freq,
-      toy_cfg_pow: S.pow
+      toy_cfg_pow: S.pow,
+      // 语音（VOC）
+      toy_cfg_voice: S.voice,
+      toy_cfg_voicevol: S.voiceVol,
+      toy_cfg_voiceauto: S.voiceAuto,
+      toy_cfg_voiceai: S.voiceAI,
+      toy_cfg_voicewarm: S.voiceWarm,
+      toy_cfg_proxy: S.ttsProxy,
+      toy_cfg_transport: S.ttsTransport,
+      toy_cfg_ttskey: S.ttsKey,
+      toy_cfg_modelhdr: S.ttsModelHdr,
+      toy_cfg_reffield: S.ttsRefField,
+      toy_cfg_nomodel: S.ttsNoModelHdr,
+      toy_cfg_extra: S.ttsExtraHdrs,
+      toy_cfg_latency: S.ttsLatency,
+      toy_cfg_target_url: S.ttsTarget,
+      toy_cfg_ttsvoice: S.ttsVoice,
+      toy_cfg_ttsmodel: S.ttsModel,
+      toy_cfg_ttsformat: S.ttsFormat,
+      toy_cfg_ttsspeed: S.ttsSpeed,
+      toy_cfg_ttsauth: S.ttsAuth
     };
     BRIDGE.setVars(blob, 'chat');
   }
@@ -3823,6 +6183,32 @@ textarea{
     if (typeof v.toy_cfg_mode === 'string' && modeExists(v.toy_cfg_mode)) S.mode = v.toy_cfg_mode;
     if (typeof v.toy_cfg_freq === 'number') S.freq = clamp(v.toy_cfg_freq, 1, 100);
     if (typeof v.toy_cfg_pow === 'number') S.pow = clamp(v.toy_cfg_pow, 1, 100);
+
+    // 语音（VOC）。这些也是新键，老聊天里没有 —— 缺失一律保持默认（关），
+    // 不动已有存档的行为；要开语音得自己到设置页开一次。
+    if (VOICE_IDS.indexOf(v.toy_cfg_voice) >= 0) S.voice = v.toy_cfg_voice;
+    if (typeof v.toy_cfg_voicevol === 'number') S.voiceVol = clamp(v.toy_cfg_voicevol, 0, 100);
+    if (typeof v.toy_cfg_voiceauto === 'boolean') S.voiceAuto = v.toy_cfg_voiceauto;
+    if (typeof v.toy_cfg_voiceai === 'boolean') S.voiceAI = v.toy_cfg_voiceai;
+    if (typeof v.toy_cfg_voicewarm === 'boolean') S.voiceWarm = v.toy_cfg_voicewarm;
+    if (typeof v.toy_cfg_proxy === 'string') S.ttsProxy = v.toy_cfg_proxy;
+    // 传输方式与令牌。老聊天里没有这两个键，缺省保持 relay + 空令牌 ——
+    // 也就是"升级后行为不变"，不会突然开始直连或凭空多出个密钥字段。
+    if (v.toy_cfg_transport === 'direct' || v.toy_cfg_transport === 'relay') S.ttsTransport = v.toy_cfg_transport;
+    if (typeof v.toy_cfg_ttskey === 'string') S.ttsKey = v.toy_cfg_ttskey;
+    // 高级项：老聊天里没有，缺省保持标准 Fish 协议的行为
+    if (typeof v.toy_cfg_modelhdr === 'string' && v.toy_cfg_modelhdr) S.ttsModelHdr = v.toy_cfg_modelhdr;
+    if (typeof v.toy_cfg_reffield === 'string' && v.toy_cfg_reffield) S.ttsRefField = v.toy_cfg_reffield;
+    if (typeof v.toy_cfg_nomodel === 'boolean') S.ttsNoModelHdr = v.toy_cfg_nomodel;
+    if (typeof v.toy_cfg_extra === 'string') S.ttsExtraHdrs = v.toy_cfg_extra;
+    if (['low', 'balanced', 'normal'].indexOf(v.toy_cfg_latency) >= 0) S.ttsLatency = v.toy_cfg_latency;
+    if (typeof v.toy_cfg_target_url === 'string') S.ttsTarget = v.toy_cfg_target_url;
+    if (typeof v.toy_cfg_ttsvoice === 'string') S.ttsVoice = v.toy_cfg_ttsvoice;
+    // 旧存档里的 toy_cfg_ttsvoicet（调教音色）已废弃：音色合并成一套，读到了也不采用
+    if (typeof v.toy_cfg_ttsmodel === 'string') S.ttsModel = v.toy_cfg_ttsmodel;
+    if (typeof v.toy_cfg_ttsformat === 'string') S.ttsFormat = v.toy_cfg_ttsformat;
+    if (typeof v.toy_cfg_ttsspeed === 'number') S.ttsSpeed = clamp(v.toy_cfg_ttsspeed, 0.5, 1.5);
+    if (typeof v.toy_cfg_ttsauth === 'string') S.ttsAuth = v.toy_cfg_ttsauth;
   }
 
   /* =========================================================
@@ -3854,6 +6240,7 @@ textarea{
     restore();
     buildModes();
     bindSettings();
+    bindVoice();      // restore 之后再刷一次：读档的值要反映到语音设置界面上
     markDurChip();
     ['#freq', '#pow', '#dur'].forEach(function (s) {
       var el = $(s);
