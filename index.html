@@ -567,6 +567,35 @@ input[type=range]::-moz-range-thumb{
 }
 .tag.ok{border-color:#5fd08e;color:#a8e8c2;background:rgba(95,208,142,.12)}
 
+/* ---------- 自动播放的"社死"警示 ----------
+   自动播放是唯一会"在没人点的情况下出声"的开关，
+   所以它开着的时候必须有存在感：开关脉冲发光 + 一条常驻警示条 + 入口处的红字。 */
+.sw.danger.on{
+  background:linear-gradient(160deg,#ff8a5c,#c23a2a);
+  animation:swglow 2.2s ease-in-out infinite;
+}
+.sw.danger.on i{background:#fff8f0}
+@keyframes swglow{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,120,90,.45)}
+  50%{box-shadow:0 0 0 7px rgba(255,120,90,0)}
+}
+.danger-chip{
+  border-color:rgba(255,120,90,.55)!important;
+  color:#ffb9a3!important;
+  background:linear-gradient(180deg,rgba(255,120,90,.20),rgba(255,120,90,.10))!important;
+  font-weight:700;
+  animation:weakpulse 2.6s ease-in-out infinite;
+}
+@keyframes weakpulse{0%,100%{opacity:1}50%{opacity:.6}}
+.danger-note{
+  margin:9px 0 0;padding:10px 12px;border-radius:11px;
+  border:1px solid rgba(255,120,90,.5);
+  background:linear-gradient(180deg,rgba(255,120,90,.16),rgba(255,120,90,.07));
+  font-size:11.5px;line-height:1.75;color:#ffcbb8;
+}
+.danger-note b{color:#ff9d80}
+.danger-note[hidden]{display:none}
+
 /* ---------- 语音页的运行日志 ----------
    等宽小字、能滚、滚到底自动跟着走。四种颜色对应 正常/提示/警告/失败。 */
 .vlog{
@@ -874,7 +903,11 @@ textarea{
       </div>
       <div class="field" style="border-top:1px solid var(--line);margin-top:12px">
         <div class="lb"><b>自动播放</b><small>面板拿到新反应时直接念出来。关掉则每条下面仍可手动点播放。</small></div>
-        <div class="sw on" id="s-voiceauto"><i></i></div>
+        <div class="sw on danger" id="s-voiceauto"><i></i></div>
+      </div>
+      <div class="danger-note" id="vs-auto-warn" hidden>
+        <b>自动播放开着</b> —— 面板每出一条新反应都会直接出声，不管你点没点。
+        在外面、戴耳机时忘了它，就是社死现场。不想冒这个险就关掉，需要时手动点「语音播放」。
       </div>
       <div class="field">
         <div class="lb"><b>语音音量</b><small>相对装置音的响度。</small></div>
@@ -1261,12 +1294,14 @@ textarea{
     <section class="panel">
       <h3>语音<span class="tag" id="voice-tag"></span></h3>
       <div class="hint" id="voice-hint" style="margin-top:0">语音目前是关的。</div>
+      <div class="danger-note" id="c-voice-auto-warn" hidden></div>
       <div class="chips">
         <button class="chip" id="c-goto-voice">打开语音设置 →</button>
+        <button class="chip" id="c-voiceauto-quick">自动播放 · 开</button>
       </div>
       <div class="hint">
-        开关、音色、合成地址、试听、缓存全在<b>语音设置</b>页里 —— 这一页只放一个入口。
-        <br>要出声只需两样：<b>合成地址</b>与<b>令牌</b>，都填在语音设置页。不需要命令行。
+        右边那个按钮就是自动播放开关 —— 点亮（脉冲）时说明它开着，新反应会直接出声。
+        <br>开关、音色、合成地址、试听、缓存全在<b>语音设置</b>页里。要出声只需两样：<b>合成地址</b>与<b>令牌</b>。不需要命令行。
       </div>
     </section>
 
@@ -1324,7 +1359,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.21';
+  var VERSION = '1.13.22';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -5779,10 +5814,48 @@ textarea{
     var ai = $('#s-voiceai'); if (ai) ai.textContent = S.voiceAI ? 'AI 生成' : '台词库';
     var swa = $('#s-voiceauto'); if (swa) swa.classList.toggle('on', S.voiceAuto);
     var sww = $('#s-voicewarm'); if (sww) sww.classList.toggle('on', S.voiceWarm);
+    paintAutoWarn();
     paintTransport();
     paintPlatform();
     paintVoice();
   }
+
+  /* 自动播放的警示：三处一起亮 —— 两个开关的脉冲、语音页的警示条、设置页入口的红字。
+     它是唯一会"在没人点的情况下出声"的开关，所以开着就得看得见。 */
+  function paintAutoWarn() {
+    var on = !!S.voiceAuto;
+    var w1 = $('#vs-auto-warn');
+    if (w1) w1.hidden = !on;
+    var w2 = $('#c-voice-auto-warn');
+    if (w2) {
+      w2.hidden = !on;
+      if (on) {
+        w2.innerHTML = '<b>自动播放开着</b> —— 新反应会直接出声。'
+          + '在外面先关掉它（语音设置页 →「自动播放」）。';
+      }
+    }
+    var sws = document.querySelectorAll('#s-voiceauto');
+    for (var i = 0; i < sws.length; i++) {
+      sws[i].classList.toggle('danger', on);
+      sws[i].classList.toggle('on', on);
+    }
+    // 设置页的快捷开关：文字与脉冲都跟着状态走，一眼看出现在是不是"会自己出声"
+    var qb = $('#c-voiceauto-quick');
+    if (qb) {
+      qb.textContent = on ? '自动播放 · 开' : '自动播放 · 关';
+      qb.classList.toggle('danger-chip', on);
+    }
+  }
+
+  /* 设置页那个快捷开关：不必进语音页就能关掉它 —— 社死只需一秒的反应时间 */
+  onEl('#c-voiceauto-quick', 'click', function () {
+    S.voiceAuto = !S.voiceAuto;
+    persist();
+    paintAutoWarn();
+    toast(S.voiceAuto
+      ? '自动播放已开：新反应会直接出声，注意场合'
+      : '自动播放已关：只有你点「语音播放」才会出声', 3000);
+  });
 
   function onEl(sel, evt, fn) {
     var e = $(sel);
@@ -6392,6 +6465,8 @@ textarea{
       S[key] = !S[key];
       el.classList.toggle('on', S[key]);
       persist();
+      // 自动播放是唯一会"自己出声"的开关，切它的时候要把三处警示一起刷新
+      if (key === 'voiceAuto') paintAutoWarn();
     });
   }
   voiceSwitch('#s-voiceauto', 'voiceAuto');
