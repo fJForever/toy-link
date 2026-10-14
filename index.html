@@ -1360,7 +1360,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.24';
+  var VERSION = '1.13.25';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -7072,44 +7072,82 @@ textarea{
     });
   }
 
+  /* 认出"脚本库里哪一条是自己"。
+     ① getScriptId() —— 接口是真的，但它只在脚本内可用，**不在脚本里调用会抛错**，
+        所以必须包 try，不能拿"函数存不存在"当判断依据。
+     ② 退一步用 getScriptName() 拿自己的名字去脚本树里对。名字可能被用户改过，
+        所以再加一道"内容是本体那种长度"的确认；脚本库里本体只有一条，够用。 */
+  function myHandles() {
+    var ids = {}, names = {};
+    var idFn = thai('getScriptId');
+    if (idFn) { try { var s = idFn(); if (s) ids[s] = 1; } catch (e) { /* 不在脚本内，正常 */ } }
+    var nmFn = thai('getScriptName');
+    if (nmFn) { try { var n = nmFn(); if (n) names[n] = 1; } catch (e) { /* noop */ } }
+    return { ids: ids, names: names, ok: Object.keys(ids).length > 0 || Object.keys(names).length > 0 };
+  }
+
+  function isMe(it, h) {
+    if (!it) return false;
+    if (h.ids[it.id]) return true;
+    return !!(h.names[it.name] && String(it.content || '').length > 5000);
+  }
+
   /* 把自己这个脚本的 content 换成新版本。
-     逐个 scope 试，只在真的找到自己那条（id 对得上）时才改，其余原样返回。 */
+     逐个 scope 试，只在真的找到自己那条时才改，其余原样返回。 */
   function writeBackSelf(code, done) {
     var upd = thai('updateScriptTreesWith');
-    var idFn = thai('getScriptId');
-    if (!upd || !idFn) { done(false, '这个环境没有脚本管理接口'); return; }
-    var myId = '';
-    try { myId = idFn() || ''; } catch (e) { /* noop */ }
-    if (!myId) { done(false, '拿不到当前脚本 id'); return; }
+    var trees = thai('getScriptTrees');
+    if (!upd || !trees) { done(false, '这个环境没有脚本管理接口'); return; }
+    var h = myHandles();
+    if (!h.ok) { done(false, '拿不到自己的脚本 id / 名称'); return; }
 
+    /* 走一遍所有作用域，逐个问"我这条在不在里面"。
+       用 getScriptTrees 判断、再整树写回，避免改到别的脚本。 */
     var scopes = ['global', 'preset', 'character'];
     var i = 0;
     (function nextScope() {
       if (i >= scopes.length) { done(false, '三个作用域里都没找到自己'); return; }
       var scope = scopes[i++];
-      var touched = false;
+      var hit = false;
       try {
-        upd(function (trees) {
-          (function walk(list) {
-            if (!list || !list.length) return;
-            for (var k = 0; k < list.length; k++) {
-              var it = list[k];
+        var list = trees({ type: scope }) || [];
+        (function walk(a) {
+          for (var k = 0; k < a.length; k++) {
+            var it = a[k];
+            if (!it) continue;
+            if (it.type === 'folder' && it.scripts) walk(it.scripts);
+            else if (isMe(it, h)) hit = true;
+          }
+        })(list);
+      } catch (e) { /* 这个作用域不存在或没权限，换下一个 */ }
+      if (!hit) { nextScope(); return; }
+
+      try {
+        upd(function (script_trees) {
+          (function walk(a) {
+            if (!a || !a.length) return;
+            for (var k = 0; k < a.length; k++) {
+              var it = a[k];
               if (!it) continue;
               if (it.type === 'folder' && it.scripts) walk(it.scripts);
-              else if (it.id === myId) { it.content = code; touched = true; }
+              else if (isMe(it, h)) it.content = code;
             }
-          })(trees);
-          return trees;
+          })(script_trees);
+          return script_trees;
         }, { type: scope });
-      } catch (e) { /* 这个作用域不存在或没权限，换下一个 */ }
-      if (touched) { done(true, scope); return; }
-      nextScope();
+        done(true, scope);
+      } catch (e) { done(false, '写回 ' + scope + ' 失败'); }
     })();
   }
 
   function selfUpdate() {
+    // 每次启动都自报一次版本，方便确认"我到底在跑哪一版"
+    console.log('[TOY·LINK] v' + VERSION + ' 启动，检查更新…');
     // 不在脚本里（前端卡 / 演示模式）就没必要跑
-    if (!thai('getScriptId')) return;
+    if (!thai('updateScriptTreesWith') || !thai('getScriptTrees')) {
+      console.log('[TOY·LINK] 这个环境没有脚本库接口，跳过自更新（前端卡属正常）');
+      return;
+    }
     fetchText(UPD_POINTER, 6000).then(function (txt) {
       var remote = String(txt || '').trim();
       if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(remote)) return;
@@ -7130,8 +7168,7 @@ textarea{
               try { toastr.info('TOY·LINK 已更新到 v' + remote + '，刷新页面生效', 'TOY·LINK'); } catch (e) { /* noop */ }
             } else {
               console.log('[TOY·LINK] 写回失败：' + where);
-            }
-          });
+            }          });
         }, function (e) {
           console.log('[TOY·LINK] 源失败 ' + url + '：' + ((e && e.message) || e));
           tryNext();
