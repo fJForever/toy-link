@@ -1450,7 +1450,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.31';
+  var VERSION = '1.13.32';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2728,7 +2728,7 @@ textarea{
     var ctx = null, bus = null, ana = null, anaBuf = null;
     var bzOn = false, bzLast = 0, bzNodes = null;
     var cache = {}, cacheDb = null, dbTried = false;
-    var seq = 0, cur = null, curUrl = '';
+    var seq = 0, cur = null, curUrl = '', curSrc = null;
 
     function AC() { return window.AudioContext || window.webkitAudioContext; }
     function isSuck() { return String(S.dev || '').indexOf('suck') === 0; }
@@ -2993,7 +2993,7 @@ textarea{
       if (!speak) speak = String(text || '').replace(/\[[^\]]*\]\s*/g, '').trim();
       var k = vkey(text, vv);
       var t0 = Date.now();
-      vlog('请求 ' + esc4(String(text).slice(0, 34)) + ' · ' + nBytes(speak) + ' 字节 · '
+      vlog('请求 ' + String(text).slice(0, 34) + ' · ' + nBytes(speak) + ' 字节 · '
         + (c.transport === 'direct' ? '直连' : '经转发') + (vv ? ' · 音色 ' + vv : ' · 默认音色'), 'hi');
       return cached(k).then(function (hit) {
         if (hit && hit.blob) {
@@ -3035,7 +3035,7 @@ textarea{
                 + (r.status === 401 || r.status === 403 ? ' ← 鉴权失败，检查令牌与鉴权方式'
                   : r.status === 404 ? ' ← 路径不对，检查合成地址'
                     : r.status === 429 ? ' ← 触发限流（并发/配额）' : '')
-                + (detail ? ' · ' + esc4(detail) : ''), 'err');
+                + (detail ? ' · ' + detail : ''), 'err');
               throw new Error((c.transport === 'direct' ? '上游' : '转发') + '返回 ' + r.status + '：' + detail);
             }, function () {
               vlog((c.transport === 'direct' ? '上游' : '转发') + ' 回 ' + r.status + '（' + ms + 'ms）', 'err');
@@ -3045,7 +3045,7 @@ textarea{
           var ct = r.headers.get('content-type') || '';
           if (ct.indexOf('json') >= 0) {
             return r.text().then(function (tx) {
-              vlog('上游回的是 JSON 不是音频：' + esc4(String(tx || '').slice(0, 160)), 'err');
+              vlog('上游回的是 JSON 不是音频：' + String(tx || '').slice(0, 160), 'err');
               throw new Error('上游不是音频：' + String(tx || '').slice(0, 200));
             });
           }
@@ -3073,7 +3073,7 @@ textarea{
               : '连不上转发脚本：先在命令行跑 node 工具-转发.js，看到「已就绪」再回来。'
                 + '若转发脚本已在跑，检查「转发地址」里的端口是否和它一致（默认 8799）。', 'err');
           } else if (e && e.name !== 'AbortError') {
-            vlog('请求失败：' + esc4(msg), 'err');
+            vlog('请求失败：' + msg, 'err');
           }
           throw e;
         });
@@ -3086,6 +3086,8 @@ textarea{
       if (!ensure()) { toast('这个环境没有 Web Audio，放不了声音'); return; }
       try {
         if (cur) { try { cur.pause(); } catch (e) { /* noop */ } }
+        // 上一条的音源节点断开：每播一句都新建一个接到总线上，不断开会越积越多
+        if (curSrc) { try { curSrc.disconnect(); } catch (e) { /* noop */ } curSrc = null; }
         if (curUrl) { try { URL.revokeObjectURL(curUrl); } catch (e) { /* noop */ } }
         curUrl = URL.createObjectURL(blob);
         var el = new Audio(curUrl);
@@ -3094,6 +3096,7 @@ textarea{
         try {
           var src = ctx.createMediaElementSource(el);
           src.connect(bus);
+          curSrc = src;
         } catch (e) { /* 某些环境接不了总线就退回原生播放 */ }
         var p = el.play();
         if (p && p.catch) p.catch(function () { /* 自动播放被挡，用户手动点 */ });
@@ -3115,7 +3118,7 @@ textarea{
         var msg = (e && e.message) || String(e);
         if (my === seq) {
           // synth 里已经把细节记进日志了，这里只补一句"这一条最终没播出来"
-          vlog('这一条没播出来：' + esc4(msg), 'err');
+          vlog('这一条没播出来：' + msg, 'err');
           toast('语音没出来：' + msg, 3200);
         }
         return null;
@@ -3440,6 +3443,10 @@ textarea{
   /* 某颗模式按钮现在能不能按 */
   function modeUnlocked(id) {
     if (S.target === 'user') return true;   // 只读仪表，本来就不响应点击
+    return modeOpen(id);
+  }
+  /* 只看阶段、不看档位：AI 在 user 档报的模式也要过这道闸（modeUnlocked 在 user 档恒为 true，挡不住它） */
+  function modeOpen(id) {
     if (id === 'edge') return S.stage >= 5;
     if (id === 'rush') return !!S.hi;
     return true;
@@ -3840,7 +3847,8 @@ textarea{
       if (!seg) continue;
       // 一句太长就按句末切，取头一两句
       if (seg.replace(/\[[^\]]*\]\s*/g, '').length > 24) {
-        var parts = seg.split(/(?<=[。！？!?])/).filter(Boolean);
+        // 不用后行断言 (?<=…)：iOS Safari 16.4 以前不认，整个脚本会在解析阶段报错、一行都不跑
+        var parts = seg.match(/[^。！？!?]+[。！？!?]*|[。！？!?]+/g) || [seg];
         var acc = '';
         for (var i = 0; i < parts.length; i++) {
           if ((acc + parts[i]).replace(/\[[^\]]*\]\s*/g, '').length > 32) break;
@@ -4848,7 +4856,7 @@ textarea{
     }
     /* 锁着的档不接受 —— 否则 AI 一句"模式=冲刺"就把阶段解锁绕过去了。
        只有玩家手动切才带 modeForce；机器播报里说的模式不越权。 */
-    if (wanted && modeUnlocked(wanted.id)) {
+    if (wanted && modeOpen(wanted.id)) {
       S.mode = wanted.id;
       var nodes = $('#modes').children;
       for (var k = 0; k < nodes.length; k++) nodes[k].classList.toggle('on', nodes[k].dataset.id === S.mode);
@@ -6065,12 +6073,20 @@ textarea{
     if (inp.value !== val) inp.value = val;
   }
 
+  /* 输入框打字时别每个字都存一遍（每次都写聊天文件 + 全局设置 + localStorage）：停手 600ms 再存；
+     change / blur 立即存 */
+  var persistTimer = 0;
+  function persistSoon(ev) {
+    clearTimeout(persistTimer);
+    if (ev && ev.type === 'input') { persistTimer = setTimeout(persist, 600); return; }
+    persist();
+  }
   function bindVoiceSlot(n, key) {
     var inp = $('#s-voice-' + n + '-input');
     if (!inp) return;
-    var apply = function () {
+    var apply = function (ev) {
       S[key] = String(inp.value || '').trim();
-      persist();
+      persistSoon(ev);
       paintVoice();
     };
     inp.addEventListener('input', apply);
@@ -6254,12 +6270,14 @@ textarea{
   function bindVoiceTwo() {
     var sw = $('#s-voice-two');
     var box = $('#s-voice-2-box');
-    var on = !!S.ttsVoiceTease;
+    // 只看 ttsVoiceTease 的话，开了开关还没填 ID 时一刷新就变回关：开关状态单独记一份
+    var on = !!S.ttsVoiceTease || !!S.voiceTwo;
     if (sw) sw.classList.toggle('on', on);
     if (box) box.style.display = on ? 'block' : 'none';
     if (sw) {
       sw.addEventListener('click', function () {
         var next = !sw.classList.contains('on');
+        S.voiceTwo = next;
         sw.classList.toggle('on', next);
         if (box) box.style.display = next ? 'block' : 'none';
         if (!next) {
@@ -6734,18 +6752,20 @@ textarea{
     var timer = ctl ? setTimeout(function () { ctl.abort(); }, 12000) : null;
     var t0 = Date.now();
     var headers = { 'Content-Type': 'application/json' };
+    // 跟真正合成时（cfgNow）同一条规则：OpenAI 平台一律不带模型头。头不一样，跨域预检的结果就对不上，检查会报反
+    var noMH = (S.ttsPlatform === 'openai') ? true : !!S.ttsNoModelHdr;
     if (direct) {
       if (S.ttsAuth === 'x-api-key' && S.ttsKey) headers['x-api-key'] = S.ttsKey;
       else if (S.ttsAuth === 'raw' && S.ttsKey) headers['Authorization'] = S.ttsKey;
       else if (S.ttsAuth !== 'none' && S.ttsKey) headers['Authorization'] = 'Bearer ' + S.ttsKey;
-      if (S.ttsModel && !S.ttsNoModelHdr) headers[S.ttsModelHdr || 'model'] = S.ttsModel;
+      if (S.ttsModel && !noMH) headers[S.ttsModelHdr || 'model'] = S.ttsModel;
       var exRaw = String(S.ttsExtraHdrs || '').trim();
       if (exRaw) { try { var ex = JSON.parse(exRaw) || {}; Object.keys(ex).forEach(function (k) { headers[k] = String(ex[k]); }); } catch (e) { /* 忽略 */ } }
     } else {
       headers['x-toylink-target'] = S.ttsTarget;
       if (S.ttsModel) headers['x-toylink-model'] = S.ttsModel;
       if (S.ttsModelHdr && S.ttsModelHdr !== 'model') headers['x-toylink-modelheader'] = S.ttsModelHdr;
-      if (S.ttsNoModelHdr) headers['x-toylink-noheaders'] = '1';
+      if (noMH) headers['x-toylink-noheaders'] = '1';
       if (S.ttsAuth && S.ttsAuth !== 'bearer') headers['x-toylink-auth'] = S.ttsAuth;
       var exRaw2 = String(S.ttsExtraHdrs || '').trim();
       if (exRaw2) headers['x-toylink-extra'] = exRaw2;
@@ -7018,15 +7038,16 @@ textarea{
   function bindText(sel, key, isNum) {
     var el = $(sel);
     if (!el) return;
-    var apply = function () {
+    var apply = function (ev) {
       if (isNum) {
         var n = parseFloat(el.value);
         S[key] = isFinite(n) ? clamp(n, key === 'ttsSpeed' ? 0.5 : 0, key === 'ttsSpeed' ? 1.5 : 100) : S[key];
-        el.value = S[key];
+        // 打字途中不回写：敲「0」会被立刻夹成 0.5，「0.8」就永远敲不进去。离开输入框时再规整显示
+        if (!ev || ev.type !== 'input') el.value = S[key];
       } else {
         S[key] = String(el.value || '').trim();
       }
-      persist();
+      persistSoon(ev);
       paintVoice();
     };
     el.addEventListener('input', apply);
@@ -7045,11 +7066,11 @@ textarea{
   (function () {
     var box = $('#s-tts-extra-oai');
     if (!box) return;
-    var apply = function () {
+    var apply = function (ev) {
       S.ttsExtraHdrs = String(box.value || '').trim();
       var other = $('#s-tts-extra');
       if (other && other.value !== box.value) other.value = box.value;
-      persist();
+      persistSoon(ev);
     };
     box.addEventListener('input', apply);
     box.addEventListener('change', apply);
@@ -7366,6 +7387,35 @@ textarea{
    * 早先全塞进聊天变量里，结果是每开一个新对话都要重填地址与令牌 —— 那是错的。
    * ======================================================= */
   var LS_KEY = 'toylink_cfg_v1';
+  var CHAT_TO_GLOBAL = {
+    toy_cfg_voice: 'toy_out_voice',
+    toy_cfg_voicevol: 'toy_out_vol',
+    toy_cfg_voiceauto: 'toy_out_auto',
+    toy_cfg_voiceai: 'toy_out_ai',
+    toy_cfg_voicewarm: 'toy_out_warm',
+    toy_cfg_warmset: 'toy_out_warmset',
+    toy_cfg_haptap: 'toy_out_haptap',
+    toy_cfg_hapfol: 'toy_out_hapfol',
+    toy_cfg_audio: 'toy_out_audio',
+    toy_cfg_proxy: 'toy_tts_proxy',
+    toy_cfg_transport: 'toy_tts_transport',
+    toy_cfg_ttskey: 'toy_tts_key',
+    toy_cfg_modelhdr: 'toy_tts_modelhdr',
+    toy_cfg_reffield: 'toy_tts_reffield',
+    toy_cfg_nomodel: 'toy_tts_nomodel',
+    toy_cfg_extra: 'toy_tts_extra',
+    toy_cfg_latency: 'toy_tts_latency',
+    toy_cfg_platform: 'toy_tts_platform',
+    toy_cfg_langboost: 'toy_tts_langboost',
+    toy_cfg_target_url: 'toy_tts_target',
+    toy_cfg_ttsvoice: 'toy_tts_voice',
+    toy_cfg_ttsvoicet: 'toy_tts_voicet',
+    toy_cfg_ttsmodel: 'toy_tts_model',
+    toy_cfg_ttsformat: 'toy_tts_format',
+    toy_cfg_ttsspeed: 'toy_tts_speed',
+    toy_cfg_ttsauth: 'toy_tts_auth'
+  };
+  var GLOBAL_SEEN = {};   // restoreGlobal 读到了哪些全局键（有全局值的，聊天里的旧值就不再采用）
 
   function lsSave(obj) {
     try { localStorage.setItem(LS_KEY, JSON.stringify(obj)); } catch (e) { /* 无痕模式等情形忽略 */ }
@@ -7379,8 +7429,7 @@ textarea{
     var ls = lsLoad();
     ls.toy_out_warmset = !!S.warmTouched;
     lsSave(ls);
-    BRIDGE.setVars({ toy_out_warmset: !!S.warmTouched, toy_cfg_warmset: !!S.warmTouched }, 'global');
-    if (BRIDGE.ready) BRIDGE.setVars({ toy_cfg_warmset: !!S.warmTouched }, 'chat');
+    BRIDGE.setVars({ toy_out_warmset: !!S.warmTouched }, 'global');
   }
 
   /* A 类：与聊天无关的接口配置 */
@@ -7398,6 +7447,7 @@ textarea{
       // 这两个选择跟踪的是"上次套用的是哪条"，所以单独存。
       toy_voicesel1: S.voiceSel1,
       toy_voicesel2: S.voiceSel2,
+      toy_voice_two: !!S.voiceTwo,
       toy_tts_model: S.ttsModel,
       toy_tts_format: S.ttsFormat,
       toy_tts_speed: S.ttsSpeed,
@@ -7413,6 +7463,7 @@ textarea{
       toy_out_vol: S.voiceVol,
       toy_out_auto: S.voiceAuto,
       toy_out_warm: S.voiceWarm,
+      toy_out_warmset: !!S.warmTouched,   // 一起写进来：lsSave 是整份覆盖，漏了它会把预热标记冲掉
       toy_out_ai: S.voiceAI,
       toy_out_haptap: S.hapticTap,
       toy_out_hapfol: S.hapticFollow,
@@ -7449,36 +7500,14 @@ textarea{
       // 首次运行补写"用户开始自己管这个开关"的版本号；一旦写下就不再改，
       // 否则老用户下次打开又会被判成"没碰过"
       toy_cfg_autoset: (AUTO_SET_STAMP || S.autoTouched) ? (AUTO_SET_STAMP || VERSION) : '',
-      toy_cfg_haptap: S.hapticTap,
-      toy_cfg_hapfol: S.hapticFollow,
-      toy_cfg_audio: S.audio,
       toy_cfg_mode: S.mode,
       toy_cfg_freq: S.freq,
-      toy_cfg_pow: S.pow,
-      // 语音（VOC）：接口部分已在全局，这里只留会话相关的
-      toy_cfg_voice: S.voice,
-      toy_cfg_voicevol: S.voiceVol,
-      toy_cfg_voiceauto: S.voiceAuto,
-      toy_cfg_voiceai: S.voiceAI,
-      toy_cfg_voicewarm: S.voiceWarm,
-      toy_cfg_proxy: S.ttsProxy,
-      toy_cfg_transport: S.ttsTransport,
-      toy_cfg_ttskey: S.ttsKey,
-      toy_cfg_modelhdr: S.ttsModelHdr,
-      toy_cfg_reffield: S.ttsRefField,
-      toy_cfg_nomodel: S.ttsNoModelHdr,
-      toy_cfg_extra: S.ttsExtraHdrs,
-      toy_cfg_latency: S.ttsLatency,
-      toy_cfg_platform: S.ttsPlatform,
-      toy_cfg_langboost: S.ttsLangBoost,
-      toy_cfg_target_url: S.ttsTarget,
-      toy_cfg_ttsvoice: S.ttsVoice,
-      toy_cfg_ttsvoicet: S.ttsVoiceTease,
-      toy_cfg_ttsmodel: S.ttsModel,
-      toy_cfg_ttsformat: S.ttsFormat,
-      toy_cfg_ttsspeed: S.ttsSpeed,
-      toy_cfg_ttsauth: S.ttsAuth
+      toy_cfg_pow: S.pow
     };
+    /* 接口配置和输出偏好已经搬到全局（persistGlobal）。聊天里不再存它们，
+       并且把旧版写进来的值清成 null：令牌不该跟着每个聊天文件走（导出/分享聊天会一起带出去），
+       旧聊天里的旧值也不该在切回来时盖掉全局里的新值。 */
+    Object.keys(CHAT_TO_GLOBAL).forEach(function (k) { blob[k] = null; });
     BRIDGE.setVars(blob, 'chat');
   }
 
@@ -7491,6 +7520,8 @@ textarea{
     var g = {};
     Object.keys(fromLs).forEach(function (k) { g[k] = fromLs[k]; });
     Object.keys(fromGlobal).forEach(function (k) { if (fromGlobal[k] != null) g[k] = fromGlobal[k]; });
+    GLOBAL_SEEN = {};
+    Object.keys(g).forEach(function (k) { if (g[k] != null) GLOBAL_SEEN[k] = 1; });
 
     if (typeof g.toy_tts_platform === 'string' && PLATFORMS[g.toy_tts_platform]) S.ttsPlatform = g.toy_tts_platform;
     if (typeof g.toy_tts_target === 'string') S.ttsTarget = g.toy_tts_target;
@@ -7502,6 +7533,7 @@ textarea{
     if (typeof g.toy_tts_voicet === 'string') S.ttsVoiceTease = g.toy_tts_voicet;
     if (typeof g.toy_voicesel1 === 'string') S.voiceSel1 = g.toy_voicesel1;
     if (typeof g.toy_voicesel2 === 'string') S.voiceSel2 = g.toy_voicesel2;
+    if (typeof g.toy_voice_two === 'boolean') S.voiceTwo = g.toy_voice_two;
     if (typeof g.toy_tts_model === 'string') S.ttsModel = g.toy_tts_model;
     if (typeof g.toy_tts_format === 'string') S.ttsFormat = g.toy_tts_format;
     if (typeof g.toy_tts_speed === 'number') S.ttsSpeed = clamp(g.toy_tts_speed, 0.5, 1.5);
@@ -7547,7 +7579,11 @@ textarea{
        所以这一步放在 BRIDGE.ready 判断之前。 */
     restoreGlobal();
     if (!BRIDGE.ready) return;
-    var v = BRIDGE.getVars('chat') || {};
+    var v0 = BRIDGE.getVars('chat') || {}, v = {};
+    Object.keys(v0).forEach(function (k) {
+      if (CHAT_TO_GLOBAL[k] && GLOBAL_SEEN[CHAT_TO_GLOBAL[k]]) return;   // 全局已有新值，旧聊天里的不算
+      v[k] = v0[k];
+    });
     if (typeof v.toy_cfg_drive === 'string') S.drive = v.toy_cfg_drive;
     if (typeof v.toy_cfg_inject === 'boolean') S.inject = v.toy_cfg_inject;
     if (typeof v.toy_cfg_cd === 'number') S.cd = v.toy_cfg_cd;
@@ -7574,7 +7610,7 @@ textarea{
          · 标记不早于它 → 用户在新规则下亲手设过，沿用。
        标记在首次运行时补写成本版号，之后不再变。 */
     var autoSetFrom = (typeof v.toy_cfg_autoset === 'string') ? v.toy_cfg_autoset : '';
-    if (autoSetFrom && autoSetFrom >= AUTO_DEFAULT_FROM) {
+    if (autoSetFrom && !newerThan(autoSetFrom, AUTO_DEFAULT_FROM)) {   // 按数字比：字符串比较到 1.13.100 会错
       S.autoTouched = true;
       if (typeof v.toy_cfg_auto === 'boolean') S.auto = v.toy_cfg_auto;
     } else {

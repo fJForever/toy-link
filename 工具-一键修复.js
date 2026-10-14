@@ -12,7 +12,29 @@
  *       一次性的修复动作，不需要跟着改，所以这个代价可以接受。
  * ============================================================ */
 (() => {
-  var FILE = 'TOY-LINK-1.13.31.js';   // 改这里时记得和 version.txt 对齐，否则会把用户覆盖成旧版
+  /* 版本不写死：这个文件在浏览器里会被缓存 7 天，写死的版本号过几天就会把用户"修复"回旧版。
+     先问版本指针（raw 翻页最快，放第一个），谁给的版本最新用谁；全都问不到才退回下面这个保底版本。 */
+  var FALLBACK = '1.13.32';
+  var FILE = '';
+  var POINTERS = [
+    'https://raw.githubusercontent.com/fJForever/toy-link/main/version.txt',
+    'https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/version.txt',
+    'https://cdn.jsdelivr.net/gh/fJForever/toy-link@main/version.txt',
+  ];
+  function newer(a, b) {   // b 比 a 新？
+    var x = String(a).split('.').map(Number), y = String(b).split('.').map(Number);
+    for (var i = 0; i < 3; i++) { if ((y[i] || 0) !== (x[i] || 0)) return (y[i] || 0) > (x[i] || 0); }
+    return false;
+  }
+  function latestVersion() {
+    var best = '';
+    return Promise.all(POINTERS.map(function (u) {
+      return fetch(u, { cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.text() : ''; })
+        .then(function (t) { t = String(t || '').trim(); if (/^[0-9]+\.[0-9]+\.[0-9]+$/.test(t) && (!best || newer(best, t))) best = t; },
+          function () { /* 这个源不通，换下一个 */ });
+    })).then(function () { return best || FALLBACK; });
+  }
   var NAME = 'TOY·LINK 装置模拟器';
   var BASES = [
     'https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/dist/',
@@ -56,7 +78,10 @@
     return !!(it.name === myName && String(it.content || '').length > 5000);
   }
 
-  fetchFirst(0).then(function (t) {
+  latestVersion().then(function (v) {
+    FILE = 'TOY-LINK-' + v + '.js';
+    return fetchFirst(0);
+  }).then(function (t) {
     code = String(t || '');
     if (code.length < 50000) throw new Error('取到的内容不正常（' + code.length + ' 字符）');
 

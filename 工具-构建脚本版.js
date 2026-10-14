@@ -92,6 +92,21 @@ MUST.forEach(function (m) {
   if (js.indexOf(m[0]) === -1) throw new Error('改写失败（' + m[1] + '）：找不到 "' + m[0] + '"');
 });
 
+/* ---------- 自更新抽到外层 ----------
+ * index.html 里的 selfUpdate 定义在主脚本自己的 IIFE 里，外层 TOYLINK_BOOT 直接调用它
+ * 只会得到 ReferenceError（被 try 吞掉，什么也没发生）—— 1.13.28「移到最前」其实没生效。
+ * 这里把整段（UPD_* / thai / newerThan / fetchText / myHandles / isMe / writeBackSelf / selfUpdate）
+ * 原样复制一份到外层自己的小闭包里，在主脚本之前跑；主脚本 boot() 末尾那次调用改成注释，免得跑两遍。
+ * index.html 自己那份留着，单独打开 index.html 预览时照旧可用。 */
+const updStart = js.search(/\/\* =+\n\s*\* 自更新\n/);
+const updEnd = js.indexOf("  if (document.readyState === 'loading')");
+if (updStart < 0 || updEnd < updStart) throw new Error('改写失败（自更新抽取）：找不到自更新段');
+const UPD_BLOCK = js.slice(updStart, updEnd).replace(/^  /gm, '    ');
+if (UPD_BLOCK.indexOf('function selfUpdate()') === -1) throw new Error('改写失败（自更新抽取）：段内没有 selfUpdate');
+const UPD_CALL_INNER = '    try { selfUpdate(); } catch (e) { /* noop */ }';
+if (js.split(UPD_CALL_INNER).length !== 2) throw new Error('改写失败（自更新抽取）：boot 末尾的调用不是恰好一处');
+js = js.split(UPD_CALL_INNER).join('    /* 自更新：构建版由外层在启动最前跑过一次，这里不再重复 */');
+
 /* ---------- 在顶栏插入收起按钮 ---------- */
 const headerBefore = shell;
 shell = shell.replace(
@@ -509,7 +524,11 @@ const body = [
   '   * 都会让更新检查永远跑不到 —— 脚本库停在坏版本上，用户刷新多少次都好不了，',
   '   * 而且自更新本来存在的意义就是"修好下一版"，它自己却先被卡死了。',
   '   * 放到最前之后，只要脚本还能执行到第一行，就能把新版写回脚本库。 */',
-  '  try { selfUpdate(); } catch (e) { /* 更新失败不能拖累启动 */ }',
+  '  (function () {',
+  '    var VERSION = "' + VERSION + '";',
+  UPD_BLOCK,
+  '    try { selfUpdate(); } catch (e) { /* 更新失败不能拖累启动 */ }',
+  '  })();',
   '',
   '  /* 说明：面板的"开合 / 收起"绑定不在这里，而在 host 建好并挂载之后那一小段',
   '     （搜「最先绑定的两件事」）。这里只放自更新 —— 它不需要 DOM，',
@@ -560,6 +579,7 @@ const body = [
   '',
   '  var PAGE = resolvePage();',
   '  var DOC = PAGE.doc, WIN = PAGE.win;',
+  '  try { WIN.__toylink_ready = false; } catch (e) { /* noop */ }   // 本实例还没启动完；上一个实例留下的 true 不算数',
   '',
   '  // 事件双绑：无论界面挂在哪一层，都能收到 resize / 触控',
   '  var WINS = [window], DOCS = [document];',
@@ -735,12 +755,10 @@ const body = [
   '    if (lsGet(FIT_KEY) === null && vp.w < 860) shellEl.classList.add("fit");',
   '    /* 视口小到放不下一个窗口时，宁可全屏也不摆一个宽度接近 0 的窗口 ——',
   '       那样面板会贴在左边、里面的按钮全点不到，等于把整个界面废掉。',
-  '       顺带把那个决定记进 FIT_KEY，免得每次 resize 都在两个坏状态之间跳。',
-  '       注意 lsGet 返回 null 表示"用户从没设过"，那种情况下也要落进 fit 分支。 */',
-  '    var fitRec = lsGet(FIT_KEY);',
+  '       只是这一次按全屏摆，不写进 FIT_KEY、也不改 fit 类：手机横屏一下高度不到 320，',
+  '       以前会把用户自己选的「窗口」永久改成全屏，而设置页的开关和 ⤢ 图标都不知道。 */',
   '    var tooSmall = (vp.w < 300 || vp.h < 320);',
-  '    if (tooSmall && fitRec !== "1") { shellEl.classList.add("fit"); lsSet(FIT_KEY, "1"); }',
-  '    var full = shellEl.classList.contains("fit");',
+  '    var full = shellEl.classList.contains("fit") || tooSmall;',
   '    shellEl.style.position = "fixed";',
   '    shellEl.style.pointerEvents = "auto";',
   '    if (full) {',
