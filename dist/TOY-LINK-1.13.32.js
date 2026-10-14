@@ -199,7 +199,11 @@ function TOYLINK_BOOT() {
             if (code.indexOf('function TOYLINK_BOOT') === -1 || code.indexOf("var VERSION = '" + remote + "'") === -1) {
               throw new Error('取到的不是 v' + remote + ' 本体');
             }
-            try { new Function(code); } catch (e) { throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e)); }
+            try { new Function(code); } catch (e) {
+              // 酒馆开了禁止 eval 的 CSP 时 new Function 本身就会被拦（EvalError），那不代表代码坏了：跳过这一步，靠上面两道认人
+              var csp = (typeof EvalError !== 'undefined' && e instanceof EvalError) || /Content Security Policy|unsafe-eval/i.test(String((e && e.message) || e));
+              if (!csp) throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e));
+            }
             writeBackSelf(code, function (ok, where) {
               if (ok) {
                 console.log('[TOY·LINK] 已写入脚本库（' + where + '），刷新页面生效');
@@ -5763,9 +5767,10 @@ function TOYLINK_BOOT() {
     fillVoiceSelect(1);
     fillVoiceSelect(2);
     var vt2 = $('#s-voice-two');
-    if (vt2) vt2.classList.toggle('on', !!S.ttsVoiceTease);
+    var two = !!S.ttsVoiceTease || !!S.voiceTwo;   // 开了开关还没填 ID 的也算开
+    if (vt2) vt2.classList.toggle('on', two);
     var v2b = $('#s-voice-2-box');
-    if (v2b) v2b.style.display = S.ttsVoiceTease ? 'block' : 'none';
+    if (v2b) v2b.style.display = two ? 'block' : 'none';
     var tg = $('#s-tts-target'); if (tg) tg.value = S.ttsTarget || '';
     var px = $('#s-tts-proxy'); if (px) px.value = S.ttsProxy || '';
     var ky = $('#s-tts-key'); if (ky) ky.value = S.ttsKey || '';
@@ -7241,7 +7246,11 @@ function TOYLINK_BOOT() {
           if (code.indexOf('function TOYLINK_BOOT') === -1 || code.indexOf("var VERSION = '" + remote + "'") === -1) {
             throw new Error('取到的不是 v' + remote + ' 本体');
           }
-          try { new Function(code); } catch (e) { throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e)); }
+          try { new Function(code); } catch (e) {
+            // 酒馆开了禁止 eval 的 CSP 时 new Function 本身就会被拦（EvalError），那不代表代码坏了：跳过这一步，靠上面两道认人
+            var csp = (typeof EvalError !== 'undefined' && e instanceof EvalError) || /Content Security Policy|unsafe-eval/i.test(String((e && e.message) || e));
+            if (!csp) throw new Error('v' + remote + ' 编译不过：' + ((e && e.message) || e));
+          }
           writeBackSelf(code, function (ok, where) {
             if (ok) {
               console.log('[TOY·LINK] 已写入脚本库（' + where + '），刷新页面生效');
