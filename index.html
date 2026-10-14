@@ -340,23 +340,26 @@ button{border:0;background:none;cursor:pointer}
 .phase-head .full-mark{color:var(--amber);font-weight:700;letter-spacing:.14em}
 .phase-head .full-mark[hidden]{display:none}
 
-/* ---------- 阶段值两个闸门：贴上/拿起 · 临界 · 冲刺 ---------- */
-.gate{display:flex;gap:8px;margin:10px 0 2px;flex-wrap:wrap}
+/* ---------- 「贴上 / 拿起」----------
+   只剩这一颗，所以给它一个适中的宽度，不铺满整行。 */
+.gate{display:flex;gap:8px;margin:10px 0 2px}
 .gate button{
-  flex:1 1 30%;min-width:86px;padding:9px 6px;border-radius:11px;cursor:pointer;
-  font-size:11.5px;letter-spacing:.08em;font-family:inherit;
+  flex:0 1 46%;min-width:120px;padding:9px 6px;border-radius:11px;cursor:pointer;
+  font-size:12px;letter-spacing:.08em;font-family:inherit;
   border:1px solid var(--line);background:rgba(238,222,242,.03);color:var(--dim);
   transition:border-color .18s,background .18s,color .18s,opacity .18s;
 }
 .gate button:active{transform:scale(.98)}
-.gate button:disabled{opacity:.32;cursor:not-allowed}
 #btn-hold.on{border-color:var(--cyan-a40);background:var(--cyan-a08);color:var(--cyan)}
-#btn-edge.on:not(:disabled){border-color:rgba(235,168,102,.55);background:rgba(235,168,102,.12);color:var(--amber)}
-#btn-dash.on:not(:disabled){
-  border-color:var(--hot-a55);background:var(--hot-a20);color:var(--hot-2);
-  font-weight:700;animation:gatePulse 1.25s ease-in-out infinite;
+
+/* ---------- 模式锁定：临界 / 冲刺 还没到阶段 ----------
+   虚化 + 斜线，一眼看出"这个档还不能用"。刻意不用 disabled：
+   那样点击会被整个吞掉，连"为什么不能点"都没法提示。 */
+.mode.lk{opacity:.34;pointer-events:auto;border-style:dashed}
+.mode.lk::after{
+  content:"锁";position:absolute;right:5px;top:4px;font-size:9px;letter-spacing:.05em;
+  color:var(--amber);opacity:.9;
 }
-@keyframes gatePulse{0%,100%{opacity:1}50%{opacity:.6}}
 
 /* ---------- 通用面板 ---------- */
 .panel{
@@ -858,15 +861,12 @@ textarea{
       <div class="phase"><i></i></div>
     </div>
 
-    <!-- 阶段值的两个闸门。
-         「贴上 / 拿起」写的是当前状态：装置贴着呢还是被拿起来了。
+    <!-- 「贴上 / 拿起」写的是当前状态：装置贴着呢还是被拿起来了。
          贴上时阶段值持续上涨，拿起后不再增加。按下就切换。
-         「临界」在第 5 阶段解锁；「冲刺」要阶段值满了才解锁。
-         满了不会自己轮回，往哪走由这里决定。 -->
+         （「临界」「冲刺」不在这儿 —— 它们是震动模式里的两个档，
+          按阶段解锁，见下面「震动模式」那一栏。） -->
     <div class="gate">
       <button type="button" id="btn-hold">贴上</button>
-      <button type="button" id="btn-edge" disabled>临界</button>
-      <button type="button" id="btn-dash" disabled>冲刺</button>
     </div>
 
     <section class="panel">
@@ -3308,16 +3308,6 @@ textarea{
     syncVars(true);
   }
 
-  /* 临界回落（面板按钮与满值解锁都用它）：
-     「到达临界后归零」打开 → 回到低位重新爬；关闭 → 留在高原上继续 */
-  function dropToEdge() {
-    S.hi = false;
-    S.aro = S.resetOnPeak ? 6 : 96;
-    S.stage = stageOf(S.aro);
-    render();
-    syncVars(true);
-  }
-
   /* 满值锁：不自动轮回，同时解锁「冲刺」。pending 要清掉 ——
      满值那一瞬间如果还挂着"等 AI 生成"，会跟玩家的手动选择打架。 */
   function enterHi() {
@@ -3349,43 +3339,9 @@ textarea{
     if (S.auto) react('mode');
   });
 
-  /* 「临界」：满值时把阶段值放回临界区间（或从头开始），装置继续跑 */
-  $('#btn-edge').addEventListener('click', function () {
-    if (!S.hi) { toast('阶段值还没满 —— 到了第 5 阶段、条子走满才能按', 2800); return; }
-    if (modeById(S.mode).oneShot) {
-      S.mode = 'edge';
-      var ns = $('#modes').children;
-      for (var k = 0; k < ns.length; k++) ns[k].classList.toggle('on', ns[k].dataset.id === S.mode);
-    }
-    S.peak++;
-    HAP.burst();
-    HAP.fire(S.env, hz());
-    dropToEdge();
-    S.lastEvent = '第 ' + S.peak + ' 次临界爆发' + (S.resetOnPeak ? '，阶段值回到起点' : '，停在高原上');
-    toast('临界爆发 ×' + S.peak);
-    react('peak');
-  });
-
-  /* 「冲刺」：满值才解锁。装置直冲顶点，完事后阶段值重来且累积放慢。
-     与「震动模式」里那个冲刺不同 —— 那个是一次性动作、到顶自动停机；
-     这里是本轮的收尾一击，把装置交还给玩家。 */
-  $('#btn-dash').addEventListener('click', function () {
-    if (!S.hi) { toast('阶段值还没满 —— 满了才会解锁冲刺', 2800); return; }
-    S.mode = 'rush';
-    var ns = $('#modes').children;
-    for (var k = 0; k < ns.length; k++) ns[k].classList.toggle('on', ns[k].dataset.id === S.mode);
-    if (!S.on) startSilent();
-    S.aro = 100;
-    S.stage = 5;
-    S.env = 1;
-    S.lastEvent = '冲刺：' + wearerName() + '被直接推到顶点';
-    HAP.burst();
-    toast('冲刺！', 2200);
-    pushAction(act('按下冲刺键，把强度直接推到顶点', '按下冲刺键，直接冲到顶'));
-    render();
-    react('peak');
-    applyDashSlow();
-  });
+  /* 「临界」和「冲刺」的解锁在「震动模式」那一栏里处理（见 paintModeLocks）。
+     它们本来就是九种模式中的两个档，不该另做一颗按钮 —— 那样同一件事有两个入口，
+     玩家还得猜两处有什么区别。这里只管「贴上 / 拿起」。 */
 
   /* 这两个函数每帧都会被 render 调到，按钮只查一次就缓存住。
      还没插进 DOM 时（真的在 DOM 之前被调到）不缓存，下次再取，避免缓存住 null。 */
@@ -3412,28 +3368,46 @@ textarea{
   /* 「临界」「冲刺」的解锁由阶段值直接决定：
      临界 = 进入第 5 阶段即可用；冲刺 = 阶段值满了才可用。
      每帧都会被 render 调到，所以只碰 class/disabled 这类便宜操作。 */
-  function paintUnlocks() {
-    /* target='user'（遥控器在 TA 手里）时这套面板是只读仪表，跟模式按钮同一条规矩：
-       档位由 AI 决定，这两个闸门也由 AI 那边走。只留「贴上」给玩家 ——
-       那是"停不停手"的物理动作，不是调度。 */
-    var own = (S.target !== 'user');
-    var ready = own && S.stage >= 5;
-    var e = gateEl('btn-edge'), d = gateEl('btn-dash');
-    if (e) {
-      e.disabled = !ready;
-      e.classList.toggle('on', ready);
-      e.title = own
-        ? (ready ? '把阶段值放回临界区间（或从头开始），装置继续运转' : '进入第 5 阶段后可用')
-        : '遥控器在 TA 手里，这一档由 TA 决定';
+  /* 「临界」和「冲刺」是九种模式里的两个档，按阶段解锁 —— 锁的是模式网格里
+     那两颗按钮（见 buildModes 与 setMode），不是另加的一排闸门按钮。
+     解锁条件是同一个阶段值：
+       临界 → 进入第 5 阶段即可用（阶段值 93 以上）
+       冲刺 → 阶段值满了（hi）才可用
+     target='user'（遥控器在 TA 手里）时不看解锁条件，整个网格都是只读仪表。 */
+
+  /* 每帧由 render / physics 调用，只碰 class 与 aria 这类便宜操作。 */
+  var LAST_MODE_LOCK = '';
+  function paintModeLocks() {
+    var box = $('#modes');
+    if (!box) return;
+    var readOnly = (S.target === 'user');
+    var sig = readOnly + '|' + S.stage + '|' + (S.hi ? 1 : 0);
+    if (sig === LAST_MODE_LOCK) return;   // 状态没变就不动 DOM
+    LAST_MODE_LOCK = sig;
+    var kids = box.children;
+    for (var i = 0; i < kids.length; i++) {
+      var b = kids[i];
+      var id = b.dataset ? b.dataset.id : '';
+      if (id !== 'edge' && id !== 'rush') continue;
+      var unlocked = readOnly ? true
+        : (id === 'edge' ? S.stage >= 5 : !!S.hi);
+      b.classList.toggle('lk', !unlocked);
+      // 用 aria 而不是 disabled：disabled 会把点击整个吞掉，连"为什么不能点"都没法提示
+      if (unlocked) b.removeAttribute('aria-disabled');
+      else b.setAttribute('aria-disabled', 'true');
+      var m = modeById(id);
+      b.title = !unlocked
+        ? (id === 'edge' ? '还没解锁：进入第 5 阶段才可用' : '还没解锁：阶段值满了才可用')
+        : m.desc;
     }
-    if (d) {
-      var full = own && !!S.hi;
-      d.disabled = !full;
-      d.classList.toggle('on', full);
-      d.title = own
-        ? (full ? '冲刺到顶点，完成后阶段值归零且累积放慢' : '阶段值满了才会解锁')
-        : '遥控器在 TA 手里，这一档由 TA 决定';
-    }
+  }
+
+  /* 某颗模式按钮现在能不能按 */
+  function modeUnlocked(id) {
+    if (S.target === 'user') return true;   // 只读仪表，本来就不响应点击
+    if (id === 'edge') return S.stage >= 5;
+    if (id === 'rush') return !!S.hi;
+    return true;
   }
 
   /* =========================================================
@@ -3842,7 +3816,7 @@ textarea{
       + (S.hi ? ' · 已满' : (S.hold ? '' : ' · 累积已停'));
     var fm = $('#full-mark');
     if (fm) fm.hidden = !S.hi;
-    paintUnlocks();
+    paintModeLocks();
     paintHold();
     var tip = $('#freeze-tip');
     if (tip) tip.hidden = !frozenNow;
@@ -3918,8 +3892,8 @@ textarea{
           }
         }
 
-        // 第 5 阶段开始「临界」按钮可用（解锁状态在 paintUnlocks 里画）
-        if (S.stage >= 5) paintUnlocks();
+        // 阶段值一变就刷模式锁定状态（内部有签名比较，同值直接返回，不做无谓的 DOM 操作）
+        paintModeLocks();
 
         /* 阶段值满了：不再自动轮回，改成一道锁。
            以前这里是"pop 一次 → 归零 → 继续爬"，无限循环；
@@ -3929,7 +3903,7 @@ textarea{
           S.aro = 100;
           S.stage = 5;
           enterHi();
-          paintUnlocks();
+          paintModeLocks();
           // 冲刺模式到顶视为"这一轮冲完了"：阶段值重来并放慢，装置交给玩家决定收不收
           if (m.oneShot) {
             HAP.fire(S.env, hz());
@@ -3942,7 +3916,7 @@ textarea{
           react('peak');
         }
         // 满值期间掉下来（被玩家按了临界/冲刺之外的路径改过）就解锁，允许重新累积
-        if (S.hi && S.aro < 99) { S.hi = false; paintUnlocks(); }
+        if (S.hi && S.aro < 99) { S.hi = false; paintModeLocks(); }
 
         // 限时到点自动停
         if (S.limit > 0 && S.t >= S.limit * 60) stop('限时结束');
@@ -4706,14 +4680,19 @@ textarea{
 
     var changed = [];
     var i;
+    var wanted = null;
     for (i = 0; i < MODES.length; i++) {
-      if (MODES[i].name === modeName && MODES[i].id !== S.mode) {
-        S.mode = MODES[i].id;
-        var nodes = $('#modes').children;
-        for (var k = 0; k < nodes.length; k++) nodes[k].classList.toggle('on', nodes[k].dataset.id === S.mode);
-        changed.push('模式「' + MODES[i].name + '」');
-        break;
-      }
+      if (MODES[i].name === modeName && MODES[i].id !== S.mode) { wanted = MODES[i]; break; }
+    }
+    /* 锁着的档不接受 —— 否则 AI 一句"模式=冲刺"就把阶段解锁绕过去了。
+       只有玩家手动切才带 modeForce；机器播报里说的模式不越权。 */
+    if (wanted && modeUnlocked(wanted.id)) {
+      S.mode = wanted.id;
+      var nodes = $('#modes').children;
+      for (var k = 0; k < nodes.length; k++) nodes[k].classList.toggle('on', nodes[k].dataset.id === S.mode);
+      changed.push('模式「' + wanted.name + '」');
+    } else if (wanted) {
+      VOC.addLog('AI 想切到还没解锁的「' + wanted.name + '」，已忽略', 'warn');
     }
     if (freq >= 1 && freq <= 100 && freq !== S.freq) {
       S.freq = freq;
@@ -5421,9 +5400,17 @@ textarea{
       b.addEventListener('click', function () { setMode(m.id); });
       box.appendChild(b);
     });
+    LAST_MODE_LOCK = '';   // 重建之后签名作废，强制重画一次
+    paintModeLocks();      // 临界 / 冲刺 的初始锁定状态
   }
   function setMode(id) {
     if (S.target === 'user') return;   // 遥控器不在玩家手里，档位点了也不算
+    if (!modeUnlocked(id)) {
+      // 锁着就明说为什么 —— 用 aria-disabled 而不是 disabled 就是为了留这条路
+      toast(id === 'edge' ? '「临界」还没解锁：进入第 5 阶段才可用'
+        : '「冲刺」还没解锁：阶段值满了才可用', 2600);
+      return;
+    }
     if (S.mode === id) return;
     S.mode = id;
     var m = modeById(id);
@@ -7488,7 +7475,7 @@ textarea{
     bindSettings();
     bindVoice();      // restore 之后再刷一次：读档的值要反映到语音设置界面上
     paintHold();      // 两个闸门的初始外观也要跟着读档的值走
-    paintUnlocks();
+    paintModeLocks();
     markDurChip();
     ['#freq', '#pow', '#dur'].forEach(function (s) {
       var el = $(s);
