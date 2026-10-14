@@ -450,19 +450,25 @@ input[type=range]::-moz-range-thumb{
   background:linear-gradient(180deg,rgba(10,5,10,.35),rgba(10,5,10,.92));
   backdrop-filter:blur(12px);
 }
+/* 两颗各占一半（flex:1 1 0），宽度随面板走，不需要写死 */
 .power{
-  flex:1;padding:15px;border-radius:15px;font-size:14.5px;font-weight:700;letter-spacing:.1em;
+  flex:1 1 0;min-width:0;padding:15px 10px;border-radius:15px;
+  font-size:14.5px;font-weight:700;letter-spacing:.1em;
   background:linear-gradient(160deg,var(--hot) -35%,var(--hot-deep,#76207a) 90%);
   color:#fbf6f0;box-shadow:0 6px 18px rgba(0,0,0,.35);
   transition:transform .12s,filter .2s;
 }
 .power:active{transform:scale(.975)}
 .power.stop{background:linear-gradient(160deg,#352a36,#1f1720);color:var(--text);box-shadow:none;border:1px solid var(--line-2)}
+/* 「立即反应一次」：和启停键平分底栏，字要看得清 */
 .ghost{
-  flex:none;width:56px;border-radius:15px;border:1px solid var(--line);
-  background:var(--card);display:grid;place-items:center;font-size:19px;color:var(--cyan);
+  flex:1 1 0;min-width:0;padding:15px 12px;border-radius:15px;
+  border:1px solid var(--line);background:var(--card);
+  font-size:14px;font-weight:600;letter-spacing:.06em;color:var(--cyan);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-.ghost:active{transform:scale(.95)}
+.ghost:active{transform:scale(.97);background:var(--card-2)}
+.ghost:disabled{opacity:.45}
 
 /* ---------- 视图切换 ---------- */
 .dock{
@@ -861,12 +867,13 @@ textarea{
       <div class="phase"><i></i></div>
     </div>
 
-    <!-- 「贴上 / 拿起」写的是当前状态：装置贴着呢还是被拿起来了。
-         贴上时阶段值持续上涨，拿起后不再增加。按下就切换。
+    <!-- 「贴上 / 拿起」写的是点下去会发生什么：
+         装置贴着时显示「拿起」，点它就把装置拿起来（阶段值停止累积）；
+         拿起来之后显示「贴上」，点它重新贴回去（阶段值继续涨）。
          （「临界」「冲刺」不在这儿 —— 它们是震动模式里的两个档，
           按阶段解锁，见下面「震动模式」那一栏。） -->
     <div class="gate">
-      <button type="button" id="btn-hold">贴上</button>
+      <button type="button" id="btn-hold">拿起</button>
     </div>
 
     <section class="panel">
@@ -905,7 +912,6 @@ textarea{
         <button class="chip on" id="c-haptap" title="切模式、启停、切换作用对象时震一下">按键震动</button>
         <button class="chip" id="c-hapfol" title="装置运行时按实时频率一直震。手机马达分辨不出频率，实际是断续的哒哒声，且费电发热">跟随震动</button>
         <button class="chip" id="c-audio">声波模拟</button>
-        <button class="chip" id="c-now">立刻反应一次</button>
       </div>
       <div class="hint" id="auto-hint"></div>
       <div class="hint" id="hap-hint"></div>
@@ -1401,9 +1407,12 @@ textarea{
   </div>
 
   <!-- ============ 电源区 ============ -->
+  <!-- 两颗各占一半。右边那颗只催一条回复，不动装置状态 ——
+       以前这里是「冲击一次」，同样是生成，却顺手把阶段值 +26，
+       想让 TA 说句话都得先付出状态代价，用起来别扭。 -->
   <div class="powerbar">
     <button class="power" id="power">启 动</button>
-    <button class="ghost" id="btn-burst" title="冲击一次"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2 4 14h7l-1 8 9-13h-7z"/></svg></button>
+    <button class="ghost act" id="btn-now" title="立刻让 TA 反应一次（不改变装置状态）">立即反应一次</button>
   </div>
 
   <nav class="dock">
@@ -1421,7 +1430,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.30';
+  var VERSION = '1.13.31';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2466,7 +2475,11 @@ textarea{
     actions: [],       // 玩家刚在面板上做的动作，让 AI 在正文开头先描述它们
     freezeOnGen: true, // AI 生成期间冻结剧情时间，生成一结束就接着走
     // 设置
-    auto: true,
+    /* 默认关：它是唯一会"自己叫 AI 生成"的开关 —— 开着时装置状态一变就往酒馆里
+       发一次生成请求，等于替你花额度，还可能在你没准备的时候打断正文。
+       要它自动跑的人自己开一次（开了会记住）。 */
+    auto: false,
+    autoTouched: false,  // 用户是否亲手改过自动反应。没碰过的人升级后走新默认（关）
     hapticTap: true,     // 按键反馈：切模式、启停、切作用对象时的短震
     hapticFollow: false, // 跟随震动：装置运行时按频率一直震。默认关，理由见 HAP.fire 注释
     audio: false,
@@ -3320,15 +3333,16 @@ textarea{
   }
 
   /* 「贴上 / 拿起」开关。
-     它就是"装置还在不在身上"这一个物理事实：
+     按钮上写的是**点下去会发生什么**（动作），不是当前状态：
+       装置还贴着 → 按钮显示「拿起」，点它就把装置拿起来
+     　装置已拿起 → 按钮显示「贴上」，点它就把装置贴回去
+     两个状态的切换就是这一个物理事实：装置还在不在身上。
        贴上 —— 装置在，刺激在走，阶段值照常累积
-       拿起 —— 装置被拿走，刺激停下，阶段值不再增加
-     按钮上写的是**当前状态**（贴在身上就显示"贴上"，拿起来了就显示"拿起"），
-     不是"按下去会做什么"。这样一眼就能看出装置现在在哪。 */
+       拿起 —— 装置被拿走，刺激停下，阶段值不再增加 */
   $('#btn-hold').addEventListener('click', function () {
     S.hold = !S.hold;
     this.classList.toggle('on', S.hold);
-    this.textContent = S.hold ? '贴上' : '拿起';
+    this.textContent = S.hold ? '拿起' : '贴上';   // 动作：当前贴着就提示"拿起"
     S.lastEvent = S.hold ? '重新贴上，阶段值继续累积' : '把装置拿起来，刺激停下，阶段值不再增加';
     toast(S.hold ? '贴上：装置还贴着，阶段值继续上涨' : '拿起：装置已离开，阶段值不再增加');
     render();
@@ -3354,15 +3368,15 @@ textarea{
     })();
   }
 
-  /* 按钮上写的是当前状态：贴着就显示"贴上"，拿起来了就显示"拿起" */
+  /* 按钮上是动作：装置贴着时显示「拿起」，已拿起时显示「贴上」 */
   function paintHold() {
     var b = gateEl('btn-hold');
     if (!b) return;
     b.classList.toggle('on', S.hold);
-    b.textContent = S.hold ? '贴上' : '拿起';
+    b.textContent = S.hold ? '拿起' : '贴上';
     b.title = S.hold
-      ? '装置贴着，阶段值继续累积。点它＝把装置拿起来'
-      : '装置已拿起，阶段值不再增加。点它＝重新贴上';
+      ? '装置还贴着，阶段值在涨。点它就等于把装置拿起来'
+      : '装置已经拿起来了，阶段值不再增加。点它就是重新贴上';
   }
 
   /* 「临界」「冲刺」的解锁由阶段值直接决定：
@@ -3467,30 +3481,97 @@ textarea{
     beg: ['[sighing]', '[soft tone]', '[calm]', '[soft tone]']
   };
 
+  /* 台词库。每条按"念出来约十到十五秒"写：拟声起头、碎句延展、省略号和破折号撑开停顿，
+     整条 35-48 字。太短会变成"啊……"一下就没了，太长又会像朗读。
+     五个档位递进：从还能说话，到只剩气音和乞求。
+     __W__ = 被作用者，__H__ = 拿遥控器的人。 */
   var VOICE_LIB = {
+    /* 被作用的是角色（遥控器在玩家手里）—— 呻吟 */
     moan: [
-      [{ t: '嗯……' }, { t: '唔……哼——' }, { t: '哈啊……' }],
-      [{ t: '哈啊……嗯——' }, { t: '不、不行……' }, { t: '唔……别、别这样……' }, { t: '啊……等一下……' }],
-      [{ t: '不行……不行了……' }, { t: '别、别调了……' }, { t: '啊——嗯……不要……' }, { t: '慢、慢一点……' }],
-      [{ t: '不要了……求你……' }, { t: '啊……啊、啊——' }, { t: '不行……我真的不行……' }],
-      [{ t: '——啊啊！嗯……' }, { t: '不要、不要了……' }, { t: '求你……停下……' }]
+      [
+        { t: '嗯……唔——哈啊……怎么、怎么这样……你等一下……我还没准备好……' },
+        { t: '唔……嗯——别、别碰那里……哈啊……不是、我不是这个意思……' },
+        { t: '哈啊……不、不是……你等一下……嗯……我话、我话还没说完……' }
+      ],
+      [
+        { t: '哈啊……嗯——不、不行……慢一点……哈……等一下，让我先喘口气……' },
+        { t: '唔……别、别这样……哈啊……我说不出话来了……你、你听见没有……' },
+        { t: '啊……等一下……那里、那里不行……唔嗯……别、别连着来……我受不了……' },
+        { t: '哈……哈啊——不、不要连着……让我歇一下……嗯……就一下……' }
+      ],
+      [
+        { t: '不行……不行了……哈啊……你、你别再……唔——嗯……我真的……' },
+        { t: '别、别调了……哈啊——我真的……说不出完整的话了……你、你慢点……' },
+        { t: '啊——嗯……不要……那里太……唔……慢、慢一点……我、我求你了……' },
+        { t: '不要了……哈啊……求你、求你等一下……我还没、还没……嗯——' }
+      ],
+      [
+        { t: '不要了……求你……哈啊——真的不行、不行了……唔……我撑不住了……' },
+        { t: '啊……啊、啊——停、停一下……我快要……唔嗯……不行……真的不行……' },
+        { t: '不行……我真的不行……哈啊……你说什么我都……唔——我都答应……' }
+      ],
+      [
+        { t: '——啊啊！嗯……不要、不要了……哈啊——求你停下来……我不行了、真的不行了……' },
+        { t: '不要、不要了……嗯——我、我认输……哈啊……你赢了……真的不行了……' },
+        { t: '求你……停下……啊——唔……我什么都答应你……只要你停、只要你停下来……' }
+      ]
     ],
+    /* 遥控器在角色手里 —— 调教对白，短命令要念得慢才够味 */
     tease: [
-      [{ t: '乖，坐好。' }, { t: '手放开。' }, { t: '看着前面。' }],
-      [{ t: '再撑一会儿。' }, { t: '别出声，会被人听见。' }, { t: '还能说得完整？' }],
-      [{ t: '你现在这个样子，很好看。' }, { t: '想让我停？先说清楚。' }, { t: '手别抖。' }],
-      [{ t: '求我。' }, { t: '说话，说不出来就点头。' }, { t: '这就不行了？' }],
-      [{ t: '记住了，今天是谁让你这样的。' }, { t: '抬头，看着我。' }]
+      [
+        { t: '乖，坐好。手放在膝盖上……对，就这样别动。我说话的时候你看着我就行。' },
+        { t: '手放开……嗯，看着我。别躲……就看着，我又不会把你怎么样。' },
+        { t: '看着前面。别回头……我知道你在忍，忍着也没用，我又不是看不出来。' }
+      ],
+      [
+        { t: '再撑一会儿……嗯，就是这样。你还能说完整一句话吗？我听着呢，慢慢说。' },
+        { t: '别出声……会被人听见的。你也不想那样吧……那就咬住，把声音咽回去。' },
+        { t: '还能说得完整？我听着呢……你继续。刚才那句话说到一半就断了，重说。' }
+      ],
+      [
+        { t: '你现在这个样子，很好看……再忍一会儿，我想多看一会儿，别急着求我。' },
+        { t: '想让我停？先说清楚……说清楚你要什么。含糊过去我可听不明白。' },
+        { t: '手别抖……嗯，抖成这样，还说自己没事。你看，连杯子都端不稳了。' }
+      ],
+      [
+        { t: '求我……用你的声音求我。说不出来就点头……对，点头也行，我数着。' },
+        { t: '说话……说不出来就点头。我看得见你在抖，别装，装也装不像。' },
+        { t: '这就不行了？……我还没怎么动呢。你抬头，看着我，把刚才那句说完。' }
+      ],
+      [
+        { t: '记住了，今天是谁让你这样的……说一遍，说给我听。说完了我就考虑放过你。' },
+        { t: '抬头，看着我……对。剩下的交给我，你只管出声，别憋着，憋着更难受。' }
+      ]
     ],
+    /* 装置和遥控器都在玩家自己手里 —— 压着嗓子，不能出声 */
     self: [
-      [{ t: '嗯……' }, { t: '唔……' }],
-      [{ t: '哈啊……' }, { t: '不行，声音会漏出去。' }],
-      [{ t: '不、不行……' }, { t: '咬住……不能出声……' }],
-      [{ t: '——嗯！' }, { t: '慢、慢一点……' }],
-      [{ t: '啊……啊——' }, { t: '不能出声……' }]
+      [
+        { t: '嗯……唔——哈啊……自己弄的，怎么、怎么这么……我这是在干什么啊……' },
+        { t: '唔……轻一点……哈啊……我这是、这是在干嘛……明明没人看着……' }
+      ],
+      [
+        { t: '哈啊……不行，声音会漏出去……唔嗯——忍、忍住，就一下，忍过这阵就好……' },
+        { t: '嗯……再一下就好……哈啊——不行，隔壁会听见的，我得把嘴捂住……' }
+      ],
+      [
+        { t: '不、不行……咬住……不能出声……哈啊——唔嗯……可是、可是这样更难受了……' },
+        { t: '慢、慢一点……啊……我捂住嘴了，可是、可是……嗯——手都在抖……' }
+      ],
+      [
+        { t: '——嗯！唔……差一点就叫出来了……哈啊……不能出声、不能……会被人发现的……' },
+        { t: '慢、慢一点……啊——我把脸埋进枕头里了……唔嗯……这样应该听不见了吧……' }
+      ],
+      [
+        { t: '啊……啊——不能出声……唔！可是真的、真的忍不住了……就、就再一下……' },
+        { t: '不行……我咬着被子了……嗯——哈啊……别、别再快了，我真的要出声了……' }
+      ]
     ],
+    /* 「请求 TA 停下」之后 TA 的应答 —— 精简，一句就够 */
     beg: [
-      { t: '……好。' }, { t: '……松手了。' }, { t: '这次就放你。' }, { t: '……过来。' }
+      { t: '……好。这就停。手给我，喘匀了再说话。' },
+      { t: '……松手了。过来，让我看看你现在这个样子。' },
+      { t: '这次就放你。下次可没这么容易，记住了。' },
+      { t: '……过来。我不碰你了，先把这个摘下来。' }
     ]
   };
 
@@ -3535,17 +3616,21 @@ textarea{
      ③ 剔掉没有标点的孤立词（台词可以是"嗯……"，但不会是光秃秃两个字）。 */
   var FIELD_NAMES = ['开关', '模式', '频率', '强度', '说明', '心声', '语音'];
   var READOUT_VALUES = ['开', '关', '脉冲', '潮汐', '心跳', '渐强', '乱流', '撩拨', '暴雨', '临界', '冲刺'];
-
   /* 剥掉尾巴上混进来的「模式=暴雨|」这类残片 */
   function stripFieldTail(s) {
     var out = String(s || '').replace(new RegExp('(?:' + FIELD_NAMES.join('|') + ')\\s*[=:：]\\s*[^|｜\\r\\n]*', 'g'), ' ');
     return out.replace(/[|｜]\s*$/g, '').replace(/\s{2,}/g, ' ').trim();
   }
 
-  /* 摘片段只针对"模式名"这一类 —— 它们绝不可能是台词的一部分。
-     「开」「关」不进这张表：它们太常用，按片段摘会把"张不开口""关不掉"砍坏；
-     它们只参与整值判断（下面 looksLikeReadout 的第一条），那里是安全的。 */
-  var READOUT_WORDS = ['脉冲', '潮汐', '心跳', '渐强', '乱流', '撩拨', '暴雨', '临界', '冲刺'];
+  /* 摘片段只针对"确定不可能是台词"的词：
+     模式名（九个档）、读数里的字段名、界面上的功能词、以及环境音与装置声。
+     「开」「关」「震动」这类**不进这张表** —— 它们太常用，
+     按片段摘会把"张不开口""关不掉""震得说不出话"砍坏；它们只参与整值判断。 */
+  var READOUT_WORDS = [
+    '脉冲', '潮汐', '心跳', '渐强', '乱流', '撩拨', '暴雨', '临界', '冲刺',
+    '开关', '模式', '频率', '强度', '时长', '限时', '累积', '阶段',
+    '声波模拟', '振动音', '嗡嗡声', '嗡鸣', '电流声', '马达', '底噪', '环境音'
+  ];
 
   /* AI 把整个读数当台词的兜底：内容本身就只是个枚举值 → 判定为串场，丢掉。
      判据分两种：
@@ -3575,17 +3660,56 @@ textarea{
       .replace(/\[[^\]]*\]/g, '')
       .replace(/[\s，。、,.;:：；！？!?…—\-~～"'「」『』]/g, '');
   }
-  /* 剥完之后什么都不剩（只有标记和标点）—— 合成出来会是一段没有内容的气声 */
+  /* 只有标记和标点、没有任何实义字 —— 合成出来会是一段没有内容的气声 */
   function noRealWord(s) { return !realWords(s); }
 
-  /* 摘掉行里混进来的模式名："喘息。暴雨" → "喘息。"
-     只摘模式名那一段，不碰正常台词。 */
+  /* ---------- 拦住"叙述"冒充台词 ----------
+     除了读数串场，还有一类更常见的污染：AI 把**旁白或环境描写**当成台词塞进语音字段。
+     实测见过「[喘息] 嗡嗡声还在继续」「[气声] 她咬着牙想维持住」。它们被念出来就是
+     一段莫名其妙的朗读。这里给一条便宜的叙述判据：
+       出现第三人称代词（她/他/它/她们…）或"自己"，并且带着描写性动词 —— 多半是叙述。
+     真正的台词是"我/你"或直接的话，不会叙述第三个人在干什么。 */
+  var NARRATIVE_VERB = /(咬着|撑着|忍着|扶着|靠着|闭着|睁着|抬|低|垂|抓|攥|扯|蜷|缩|颤|抖|呼吸|喘着|看着|听着|感到|觉得|试图|努力|勉强|不由|慢慢|渐渐|已经|正在|还在|似乎|仿佛|好像|终于|依旧|仍然)/;
+  function looksLikeNarration(s) {
+    var t = String(s || '').replace(/\[[^\]]*\]\s*/g, '').trim();
+    if (!t) return false;
+    var third = /(她们|他们|它们|她|他|它|自己)/.test(t);
+    if (!third) return false;
+    // 「你」「我」在场时更像对话，放宽一点：只有同时带描写动词才判为叙述
+    return NARRATIVE_VERB.test(t);
+  }
+
+  /* ---------- 环境音：装置声不是台词 ----------
+     「嗡嗡声还在继续」这种整行都会被念出来。只摘掉"嗡嗡声"不够，
+     上半句「还在继续」照样是噪音，所以还要判"整行是不是环境描写"。
+     只列**以「声」结尾的词**和明确的装置声名词：这样"震动声""电流声"能摘，
+     而"震得我说不出话""声音都变了"这类真台词不会被砍坏。 */
+  var AMBIENT_RE = /(嗡嗡声|嗡鸣声?|电流声|马达声|振动声|震动声|底噪声?|环境音|轰鸣声?|噪[声音]|机械声|音效)/g;
+
+  /* 这一行是不是主要在讲装置/环境在响 */
+  function looksLikeAmbient(s) {
+    var raw = String(s || '');
+    if (!AMBIENT_RE.test(raw)) return false;
+    AMBIENT_RE.lastIndex = 0;
+    // 摘掉所有环境音词，剩下的若只是零碎连接词和标点（没有引号、没有语气词），
+    // 就说明这一行本来就是在描述"什么东西在响"，不是人在说话
+    var rest = raw.replace(AMBIENT_RE, '').replace(/\[[^\]]*\]/g, '')
+      .replace(/[\s，。、,.;:：；！？!?…—\-~～"'「」『』]/g, '');
+    if (rest.length >= 6) return false;                       // 还有实打实的内容，留着
+    if (/[「」『』"']/.test(raw)) return false;                 // 带引号的是对白
+    return true;
+  }
+
+  /* 摘掉行里混进来的模式名/环境音，并把整行是环境描写的作废 */
   function dropReadoutSeg(s) {
+    var raw = String(s || '');
+    if (looksLikeAmbient(raw)) return '';
     var re = new RegExp('(' + READOUT_WORDS.join('|') + ')', 'g');
-    return String(s || '')
+    return raw
       .split(re)
       .map(function (x) { return (x != null && READOUT_WORDS.indexOf(x) >= 0) ? ' ' : x; })
       .join('')
+      .replace(AMBIENT_RE, ' ')
       .replace(/\s{2,}/g, ' ')
       .trim();
   }
@@ -3600,6 +3724,7 @@ textarea{
     var s = dropReadoutSeg(stripFieldTail(raw));
     if (realWords(raw) && noRealWord(s)) return '';
     if (looksLikeReadout(s)) return '';
+    if (looksLikeNarration(s)) return '';   // 旁白/环境描写：不是台词，别念
     return s.replace(/^[\s，、,；;：:|｜]+|[\s，、,；;：:|｜]+$/g, '').trim();
   }
 
@@ -3728,6 +3853,10 @@ textarea{
   function lineIsVoice(s) {
     s = String(s || '').trim();
     if (!s) return false;
+    /* 先排除叙述，再谈"像不像台词"。
+       带标记的行以前一律放行 —— 于是「[喘息] 嗡嗡声还在继续」这种
+       被标了记的旁白照样会通过，然后被念出来。这里把它拦在前面。 */
+    if (looksLikeNarration(s)) return false;
     if (hasMark(s)) return true;                                  // [panting] 哈啊……
     if (/^[「『"'“]/.test(s) || /[」』"'”]$/.test(s)) return true;  // 带引号的对白
     if (s.replace(/\[[^\]]*\]\s*/g, '').length > 80) return false; // 太长且没标记，一律不是台词
@@ -4120,6 +4249,11 @@ textarea{
     }
     return L.join('\n');
   }
+
+  /* 「自动反应」默认关闭。老存档里的 true 是旧默认塞进去的，不算用户选择 ——
+     AUTO_SET_STAMP 记下"用户开始自己管这个开关"的版本，早于 AUTO_DEFAULT_FROM 的值一律不认。 */
+  var AUTO_DEFAULT_FROM = '1.13.30';
+  var AUTO_SET_STAMP = '';
 
   var LAST_VARS_SIG = '';
   function syncVars(reactive) {
@@ -4610,7 +4744,8 @@ textarea{
         + '面板上只显示这一句，所以它要能独立看懂。',
       '· 语音填 ' + cn + ' 这一轮**说出口**的话。**每一轮都必须填，不能留空** —— 它会被直接念成声音。',
       '· 语音要写成 **2 到 3 行**，每行都是一句能念出来的话，**每行开头都要带情绪标记**。',
-      '· 每行 **12-24 字**，用省略号、破折号和问号断开 —— 短句念得顺，长了会变成朗读。',
+      '· 每行 **35-48 字**，长度照着下面正确例子来 —— 太短会"啊……"一下就没了，'
+        + '太长会变成朗读。用省略号、破折号把句子断开，让它在气声里一段段漏出来。',
       '· 标记用方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] '
         + '[nervous] [pleased] [chuckling] [sighing]）或中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；'
         + '一行最多叠 3 个。',
@@ -4619,12 +4754,18 @@ textarea{
         + '压在喉咙里的碎音。**不要写动作、不要写旁白、不要用括号包住叙述** ——'
         + '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里。',
       '· 语音里**不许出现读数里的任何信息** —— 不许写模式名（脉冲／潮汐／心跳／渐强／乱流／撩拨／暴雨／临界／冲刺）、'
-        + '开关状态、频率、强度。那些只写在上面那几个字段里。**「暴雨」这种词单独出现时会被当成噪音念出来**，'
-        + '玩家听到的就是一句莫名其妙的档位名。',
-      '· 正确例子（照这个格式写：三行，每行开头都是方括号标记）：',
-      '　[soft tone][whispering] 你怎么还没睡呀？',
-      '　[inhale] 我只是……有点想你了。',
-      '　[short pause][chuckling] 好啦，别笑我。',
+        + '开关状态、频率、强度、累积、阶段。那些只写在上面那几个字段里。'
+        + '**「暴雨」「撩拨」这种词单独出现时会被当成噪音念出来**，玩家听到的就是一句莫名其妙的档位名。',
+      '· 语音里**不许写环境音和装置声** —— 嗡嗡声、嗡鸣、电流声、马达声、震动声、底噪，'
+        + '这些都不是 ' + cn + ' 说出口的话。它们只写在正文里。',
+      '· 语音要写成 ' + cn + ' **直接说出口的话**，不要叙述：'
+        + '不要出现"她/他/它/自己"，也不要写"咬着牙""撑着""忍不住""慢慢"这种描写的动作 ——'
+        + '一句台词是关于"我"和"你"的，不是关于第三个人在做什么的。',
+      '· 反例（这些都会被丢掉，别写）：[喘息] 嗡嗡声还在继续 ／ [气声] 她咬着牙想维持住 ／ [气声] 撩拨',
+      '· 正确例子（照这个**长度和格式**写：2-3 行，每行开头都是方括号标记）：',
+      '　[soft tone][whispering] 你怎么还没睡呀……我都醒了有一会儿了，听着你在那边翻身……',
+      '　[inhale] 我只是……有点想你了。也没别的事，就是忽然想听听你的声音，没打扰你吧？',
+      '　[short pause][chuckling] 好啦，别笑我……我说完这句就不说了，你先去忙你的……',
       '· 这一行是给装置读的，正文里绝对不要提到它，也不要解释这是什么。'
     ];
 
@@ -5199,16 +5340,17 @@ textarea{
       '',
       '硬性要求：',
       '· 写成 **2 到 3 行**，每行一句台词，**每行开头都要带方括号情绪标记**。',
-      '· 每行 **12-24 字**，用省略号、破折号和问号断开。',
+      '· 每行 **35-48 字**，照着下面示例的长度写 —— 太短念一下就完了，太长会变成朗读。',
       '· 标记可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] [nervous] '
         + '[chuckling] [sighing]）或中文描述（[气声] [颤抖] [黏腻]）；一行最多叠 3 个。',
       '· 三行之间要有推进：从试探到说透，最后一句可以退让、打岔或撒娇收尾。',
-      '· 只写能念出来的话（拟声、短命令、压在喉咙里的碎音），不要写动作、不要写旁白。',
+      '· 只写能念出来的话（拟声、短命令、压在喉咙里的碎音），不要写动作、不要写旁白，'
+        + '也不要写环境音（嗡嗡声、电流声这类既不是台词也不是人声）。',
       '',
-      '格式示例（三行，每行都以标记开头）：',
-      '　[soft tone][whispering] 你怎么还没睡呀？',
-      '　[inhale] 我只是……有点想你了。',
-      '　[short pause][chuckling] 好啦，别笑我。'
+      '格式示例（照这个长度和格式写）：',
+      '　[soft tone][whispering] 你怎么还没睡呀……我都醒了有一会儿了，听着你在那边翻身……',
+      '　[inhale] 我只是……有点想你了。也没别的事，就是忽然想听听你的声音，没打扰你吧？',
+      '　[short pause][chuckling] 好啦，别笑我……我说完这句就不说了，你先去忙你的……'
     ];
     var warn = voiceish(cur) ? '' : '\n· 注意：原句看起来像旁白而不是台词，改写后必须变成能直接念出来的话。';
     return L.join('\n') + warn;
@@ -5486,24 +5628,26 @@ textarea{
   }
 
   $('#power').addEventListener('click', function () { S.on ? stop() : start(); });
-  $('#btn-burst').addEventListener('click', function () {
-    if (!S.on) { toast('先启动装置'); return; }
-    // 冲击是玩家主动按的，不受「贴上/拿起」总闸限制 —— 总闸管的是"装置在不在身上"
-    if (S.hi || S.aro >= 100) { toast('阶段值已经满了 —— 该按「临界」或「冲刺」', 2800); return; }
-    pushAro(26);
-    S.env = 1;
-    HAP.tap([0, 40, 30, 70, 30, 110]);   // 这是玩家按的键，走按键反馈，不走跟随震动
-    S.lastEvent = '手动冲击，强度骤增';
-    pushAction(act('按下遥控器上的冲击键，强度瞬间拉满', '按下冲击键，把强度瞬间拉满'));
-    toast('冲击 +26');
-    render();
-    react('burst', true);
+
+  /* 底栏那颗「立即反应一次」：催一条新回复，装置状态一点都不动。
+     不看装置开没开、不改阶段值、不动档位 —— 它就是"催一下"。
+     （以前这里是「冲击一次」：同样是生成，却顺手把阶段值 +26，
+       想让 TA 说句话都得先付出状态代价。） */
+  $('#btn-now').addEventListener('click', function () {
+    HAP.tap(28);
+    S.lastEvent = '玩家催了一次反应';
+    pushAction(act('按下了面板上的「立即反应一次」', '按下了「立即反应一次」'));
+    toast('已催 TA 反应一次', 2000);
+    react('manual', true);
   });
 
   function toggleBtn(el, key, after) {
     el.addEventListener('click', function () {
       S[key] = !S[key];
       el.classList.toggle('on', S[key]);
+      // 「自动反应」碰过就盖章：记下"用户从这个版本开始自己管它"。
+      // 早于 AUTO_DEFAULT_FROM 的旧值会被 restore 判成"旧默认塞进去的"而丢弃。
+      if (key === 'auto') { S.autoTouched = true; if (!AUTO_SET_STAMP) AUTO_SET_STAMP = VERSION; }
       if (after) after();
       bindSettings();
       persist();
@@ -5524,7 +5668,7 @@ textarea{
     if (S.audio) { AUD.start(); AUD.update(S.on ? S.env : 0, hz()); }
     else AUD.stop();
   });
-  $('#c-now').addEventListener('click', function () { HAP.tap(28); react('manual', true); });
+  // 底栏那颗「立即反应一次」就是唯一的入口，联动面板里不再重复一颗
 
   /* 请求 TA 停下。按下去不算数——得看 TA 这一轮肯不肯。
      默认一求就停；开了「TA 未必肯听」之后要两三回，但脚本保证求满就一定停。 */
@@ -7289,6 +7433,9 @@ textarea{
       toy_cfg_explicit: S.explicit,
       toy_cfg_begdocile: S.begDocile,
       toy_cfg_auto: S.auto,
+      // 首次运行补写"用户开始自己管这个开关"的版本号；一旦写下就不再改，
+      // 否则老用户下次打开又会被判成"没碰过"
+      toy_cfg_autoset: (AUTO_SET_STAMP || S.autoTouched) ? (AUTO_SET_STAMP || VERSION) : '',
       toy_cfg_haptap: S.hapticTap,
       toy_cfg_hapfol: S.hapticFollow,
       toy_cfg_audio: S.audio,
@@ -7406,7 +7553,22 @@ textarea{
     // 老聊天里没有这个键，缺失时保持默认（直写），不改变已有存档的行为
     if (typeof v.toy_cfg_explicit === 'boolean') S.explicit = v.toy_cfg_explicit;
     if (typeof v.toy_cfg_begdocile === 'boolean') S.begDocile = v.toy_cfg_begdocile;
-    if (typeof v.toy_cfg_auto === 'boolean') S.auto = v.toy_cfg_auto;
+    /* 自动反应改成默认关闭。这里的迁移有点绕，值得说明：
+       老存档里 auto 是 true，而它多半不是用户选的 —— 是旧默认值被顺手写进了存档。
+       所以不能一律沿用，否则"改成默认关"对老用户等于没生效，而他们才是最该被省额度的。
+       办法是记住"这个开关是从哪个版本开始由用户自己管的"（toy_cfg_autoset 存版本号）：
+         · 标记缺失或早于 AUTO_DEFAULT_FROM → 存档里的值只是旧默认，丢掉，走新默认（关）；
+         · 标记不早于它 → 用户在新规则下亲手设过，沿用。
+       标记在首次运行时补写成本版号，之后不再变。 */
+    var autoSetFrom = (typeof v.toy_cfg_autoset === 'string') ? v.toy_cfg_autoset : '';
+    if (autoSetFrom && autoSetFrom >= AUTO_DEFAULT_FROM) {
+      S.autoTouched = true;
+      if (typeof v.toy_cfg_auto === 'boolean') S.auto = v.toy_cfg_auto;
+    } else {
+      S.auto = false;         // 旧默认留下的值：不是用户选的，不认
+      S.autoTouched = false;
+      AUTO_SET_STAMP = VERSION;
+    }
     // 三个输出开关原先没有持久化，每次重载都会弹回默认值，一并补上
     if (typeof v.toy_cfg_haptap === 'boolean') S.hapticTap = v.toy_cfg_haptap;
     if (typeof v.toy_cfg_hapfol === 'boolean') S.hapticFollow = v.toy_cfg_hapfol;

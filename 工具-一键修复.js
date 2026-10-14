@@ -12,7 +12,7 @@
  *       一次性的修复动作，不需要跟着改，所以这个代价可以接受。
  * ============================================================ */
 (() => {
-  var FILE = 'TOY-LINK-1.13.30.js';   // 改这里时记得和 version.txt 对齐，否则会把用户覆盖成旧版
+  var FILE = 'TOY-LINK-1.13.31.js';   // 改这里时记得和 version.txt 对齐，否则会把用户覆盖成旧版
   var NAME = 'TOY·LINK 装置模拟器';
   var BASES = [
     'https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/dist/',
