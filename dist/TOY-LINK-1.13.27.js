@@ -5287,8 +5287,11 @@ function TOYLINK_BOOT() {
     return last;
   }
 
-  function bindVoice() {
-    var v = $('#s-voice'); if (v) v.textContent = VOICE_LABEL[S.voice] || '关';
+  /* 传输方式的显示与说明。以前这一段的函数头被误写成了 bindVoice，
+     导致 paintTransport 根本不存在 —— 启动流程第一次调用它就抛
+     "paintTransport is not defined"，整个 boot 中断，window.__TOYLINK__ 永远
+     挂不上去，面板看着在、实际全是死的。函数名务必和下面那个 bindVoice 区分开。 */
+  function paintTransport() {
     var direct = (S.ttsTransport === 'direct');
     var b = $('#s-transport');
     if (b) b.textContent = direct ? '直连中转' : '经本机转发';
@@ -6787,9 +6790,28 @@ function TOYLINK_BOOT() {
   var sizeBtn = ROOT.querySelector("#btn-size");
   var FIT_KEY = "toylink_fit_mode", POS_KEY = "toylink_win_pos";
 
+  /* 视口尺寸。这里必须层层兜底 —— 脚本跑在酒馆助手的 iframe 里，
+     而 iframe 有可能是隐藏的（resolvePage 回落到 self 时）。隐藏 iframe 的
+     innerWidth/clientWidth 都是 0，拿 0 去算布局会把面板定成 left=0;width=0：
+     贴在左上角、内容一个点不到。宁可回落到一个保守的默认值，也不要 0。 */
   function viewport() {
-    var w = WIN.innerWidth || DOC.documentElement.clientWidth || 0;
-    var h = WIN.innerHeight || DOC.documentElement.clientHeight || 0;
+    function pick() {
+      for (var i = 0; i < arguments.length; i++) {
+        var v = arguments[i];
+        if (typeof v === "number" && isFinite(v) && v > 0) return v;
+      }
+      return 0;
+    }
+    var w = pick(WIN.innerWidth, DOC.documentElement && DOC.documentElement.clientWidth,
+      (typeof window !== "undefined" ? window.innerWidth : 0),
+      (typeof window !== "undefined" && window.document.documentElement)
+        ? window.document.documentElement.clientWidth : 0)
+      || 360;
+    var h = pick(WIN.innerHeight, DOC.documentElement && DOC.documentElement.clientHeight,
+      (typeof window !== "undefined" ? window.innerHeight : 0),
+      (typeof window !== "undefined" && window.document.documentElement)
+        ? window.document.documentElement.clientHeight : 0)
+      || 640;
     return { w: w, h: h };
   }
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -6801,7 +6823,11 @@ function TOYLINK_BOOT() {
     var a = s.split(",");
     if (a.length !== 2) return null;
     var x = parseFloat(a[0]), y = parseFloat(a[1]);
-    return (isFinite(x) && isFinite(y)) ? { left: x, top: y } : null;
+    if (!isFinite(x) || !isFinite(y)) return null;
+    /* 明显不可用的旧记录直接丢掉：面板宽 280-368，x 落在 0-10 之间一定是当年
+       用一个错的视口宽度算出来的（比如隐藏 iframe 的 0），留着就会永远贴左边。 */
+    if (x < 12 && y < 12) return null;
+    return { left: x, top: y };
   })();
 
   var layingOut = false;   // layout 末尾会广播 resize，而 layout 自己也挂在 resize 上：不设闸就无限递归（控制台成串的 Maximum call stack）
@@ -6814,6 +6840,13 @@ function TOYLINK_BOOT() {
     var vp = viewport();
     // 窄屏第一次打开默认全屏，之后听用户的
     if (lsGet(FIT_KEY) === null && vp.w < 860) shellEl.classList.add("fit");
+    /* 视口小到放不下一个窗口时，宁可全屏也不摆一个宽度接近 0 的窗口 ——
+       那样面板会贴在左边、里面的按钮全点不到，等于把整个界面废掉。
+       顺带把那个决定记进 FIT_KEY，免得每次 resize 都在两个坏状态之间跳。
+       注意 lsGet 返回 null 表示"用户从没设过"，那种情况下也要落进 fit 分支。 */
+    var fitRec = lsGet(FIT_KEY);
+    var tooSmall = (vp.w < 300 || vp.h < 320);
+    if (tooSmall && fitRec !== "1") { shellEl.classList.add("fit"); lsSet(FIT_KEY, "1"); }
     var full = shellEl.classList.contains("fit");
     shellEl.style.position = "fixed";
     shellEl.style.pointerEvents = "auto";
@@ -6835,10 +6868,20 @@ function TOYLINK_BOOT() {
       shellEl.style.borderRadius = "20px";
       shellEl.style.border = "1px solid rgba(232,214,236,.10)";
       shellEl.style.boxShadow = "0 24px 70px rgba(0,0,0,.72)";
+      /* 上一次拖到的位置只有在"当前视口下真的放得下"时才认。
+         以前是一票否决：savedPos 存在就永远用它，于是窗口变宽之后
+         面板还钉在当年那个左边的坐标上，看起来就是"贴在左边"。 */
+      var maxL = vp.w - w - 4, maxT = vp.h - h - 4;
+      var useSaved = !!savedPos && maxL >= 0 && maxT >= 0;
       var L, T;
-      if (savedPos) {
-        L = Math.min(Math.max(4, savedPos.left), Math.max(4, vp.w - w - 4));
-        T = Math.min(Math.max(4, savedPos.top), Math.max(4, vp.h - h - 4));
+      if (useSaved) {
+        L = Math.min(Math.max(4, savedPos.left), maxL);
+        T = Math.min(Math.max(4, savedPos.top), maxT);
+        // 纠偏后的位置与记录差得多，说明那条记录已经过期，就地修掉
+        if (Math.abs(L - savedPos.left) > 24 || Math.abs(T - savedPos.top) > 24) {
+          savedPos = { left: L, top: T };
+          lsSet(POS_KEY, L + "," + T);
+        }
       } else {
         L = Math.max(8, vp.w - w - 18);
         T = Math.max(8, vp.h - h - 88);
@@ -6892,6 +6935,26 @@ function TOYLINK_BOOT() {
   var fitSw = ROOT.querySelector("#s-fit");   // 设置页的「全屏」开关和 ⤢ 是同一个动作，尺寸同样要重算
   if (fitSw) fitSw.addEventListener("click", function () { setTimeout(layout, 0); });
 
+  /* ---------- 自助复位 ----------
+   * 面板贴在角落、或者位置怎么都不对时，在浏览器控制台敲这一行即可：
+   *     __TOYLINK__.resetLayout()
+   * 它会清掉记下来的窗口位置和全屏偏好，然后按当前视口重算一次。
+   * 之所以要留这个口子：位置是存在 localStorage 里的，一旦存进一个坏值，
+   * 光刷新页面是出不来的 —— 用户会被锁在一个自己修不好的状态里。 */
+  TK_API.resetLayout = function () {
+    try { localStorage.removeItem(POS_KEY); } catch (e) { /* noop */ }
+    try { localStorage.removeItem(FIT_KEY); } catch (e) { /* noop */ }
+    savedPos = null;
+    var vp = viewport();
+    if (vp.w < 300 || vp.h < 320) shellEl.classList.add("fit");
+    else shellEl.classList.remove("fit");
+    layout();
+    console.log("[TOY·LINK] 已复位布局：view " + vp.w + "x" + vp.h
+      + " | fit=" + shellEl.classList.contains("fit")
+      + " | left=" + (shellEl.style.left || "auto"));
+    return "已复位";
+  };
+
   /* ---------- 开合 ---------- */
   // 同一次会话里记住上次的收起状态，避免切聊天就又弹一脸
   var opened = true;
@@ -6920,6 +6983,7 @@ function TOYLINK_BOOT() {
   window.__TOYLINK__ = {
     version: "1.13.27",
     host: host, root: root, ball: ball, page: PAGE,
+    resetLayout: TK_API.resetLayout,   // 面板位置不对劲时，控制台敲 __TOYLINK__.resetLayout()
     open: open, collapse: collapse, toggle: toggle,
     stop: function () {
       try { if (NAV.vibrate) NAV.vibrate(0); } catch (e) { /* noop */ }
@@ -6988,6 +7052,15 @@ function TOYLINK_BOOT() {
         + " | stage " + Math.round(dr.width) + "x" + Math.round(dr.height)
         + " | ring " + Math.round(rg.width) + "x" + Math.round(rg.height)
         + " | dpr " + (WIN.devicePixelRatio || 1));
+      /* 这一行是给"面板贴在左边 / 点不到"这类问题准备的：
+         view 用的是算出来那个视口，shell 是最终落到页面上的大小。
+         两个数对不上、或者 shell 宽度接近 0，看这行就知道卡在哪一步。 */
+      var vpv = viewport();
+      console.log("[TOY·LINK] 布局 view " + vpv.w + "x" + vpv.h
+        + " | fit=" + shellEl.classList.contains("fit")
+        + " | left=" + (shellEl.style.left || "auto")
+        + " | 定位来源=" + (shellEl.style.left ? "内联（layout 算出来的）" : "CSS")
+        + " | via=" + PAGE.via);
     } catch (e) { /* noop */ }
   }, 400);
 }
@@ -6996,9 +7069,14 @@ function TOYLINK_BOOT() {
 try {
   if (typeof $ === "function") { $(function () { TOYLINK_BOOT(); }); } else { TOYLINK_BOOT(); }
 } catch (e) {
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", TOYLINK_BOOT);
-  } else {
-    TOYLINK_BOOT();
-  }
+  console.error("[TOY·LINK] 启动失败，面板不会工作：", e);
 }
+/* 兜底自检：boot 若是半途抛错，面板会"看得见、全点不动"，
+   而控制台里往往只有一行容易漏掉的红字。这里明确报出来。
+   （外层 try/catch 抓不到 $(fn) 里的错误 —— jQuery 是异步调用的。） */
+setTimeout(function () {
+  if (!window.__TOYLINK__) {
+    console.error("[TOY·LINK] 启动流程没有完成：window.__TOYLINK__ 不存在 —— "
+      + "面板虽然可能已经画出来，但按钮全是死的。请把控制台里 TOY·LINK 相关的报错发出来。");
+  }
+}, 3000);

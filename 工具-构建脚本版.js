@@ -891,12 +891,17 @@ const body = [
   'try {',
   '  if (typeof $ === "function") { $(function () { TOYLINK_BOOT(); }); } else { TOYLINK_BOOT(); }',
   '} catch (e) {',
-  '  if (document.readyState === "loading") {',
-  '    document.addEventListener("DOMContentLoaded", TOYLINK_BOOT);',
-  '  } else {',
-  '    TOYLINK_BOOT();',
+  '  console.error("[TOY·LINK] 启动失败，面板不会工作：", e);',
+  '}',
+  '/* 兜底自检：boot 若是半途抛错，面板会"看得见、全点不动"，',
+  '   而控制台里往往只有一行容易漏掉的红字。这里明确报出来。',
+  '   （外层 try/catch 抓不到 $(fn) 里的错误 —— jQuery 是异步调用的。） */',
+  'setTimeout(function () {',
+  '  if (!window.__TOYLINK__) {',
+  '    console.error("[TOY·LINK] 启动流程没有完成：window.__TOYLINK__ 不存在 —— "',
+  '      + "面板虽然可能已经画出来，但按钮全是死的。请把控制台里 TOY·LINK 相关的报错发出来。");',
   '  }',
-  '}'
+  '}, 3000);'
 ].join('\n');
 
 const ARTIFACT = HEADER + body + '\n';

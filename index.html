@@ -6277,8 +6277,11 @@ textarea{
     return last;
   }
 
-  function bindVoice() {
-    var v = $('#s-voice'); if (v) v.textContent = VOICE_LABEL[S.voice] || '关';
+  /* 传输方式的显示与说明。以前这一段的函数头被误写成了 bindVoice，
+     导致 paintTransport 根本不存在 —— 启动流程第一次调用它就抛
+     "paintTransport is not defined"，整个 boot 中断，window.__TOYLINK__ 永远
+     挂不上去，面板看着在、实际全是死的。函数名务必和下面那个 bindVoice 区分开。 */
+  function paintTransport() {
     var direct = (S.ttsTransport === 'direct');
     var b = $('#s-transport');
     if (b) b.textContent = direct ? '直连中转' : '经本机转发';
