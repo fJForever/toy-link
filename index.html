@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -340,7 +340,7 @@ button{border:0;background:none;cursor:pointer}
 .phase-head .full-mark{color:var(--amber);font-weight:700;letter-spacing:.14em}
 .phase-head .full-mark[hidden]{display:none}
 
-/* ---------- 阶段值两个闸门：贴上 / 临界 / 冲刺 ---------- */
+/* ---------- 阶段值两个闸门：贴上/拿起 · 临界 · 冲刺 ---------- */
 .gate{display:flex;gap:8px;margin:10px 0 2px;flex-wrap:wrap}
 .gate button{
   flex:1 1 30%;min-width:86px;padding:9px 6px;border-radius:11px;cursor:pointer;
@@ -858,10 +858,13 @@ textarea{
       <div class="phase"><i></i></div>
     </div>
 
-    <!-- 阶段值的两个闸门。贴上控制"还涨不涨"；临界在第 5 阶段解锁，
-         冲刺要等阶段值满了才解锁。满了不会自己轮回，往哪走由这里决定。 -->
+    <!-- 阶段值的两个闸门。
+         「贴上 / 拿起」写的是当前状态：装置贴着呢还是被拿起来了。
+         贴上时阶段值持续上涨，拿起后不再增加。按下就切换。
+         「临界」在第 5 阶段解锁；「冲刺」要阶段值满了才解锁。
+         满了不会自己轮回，往哪走由这里决定。 -->
     <div class="gate">
-      <button type="button" id="btn-hold">贴上 · 累积中</button>
+      <button type="button" id="btn-hold">贴上</button>
       <button type="button" id="btn-edge" disabled>临界</button>
       <button type="button" id="btn-dash" disabled>冲刺</button>
     </div>
@@ -1418,7 +1421,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.29';
+  var VERSION = '1.13.30';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2481,7 +2484,7 @@ textarea{
     stageForce: true,
     gain: 100,
     resetOnPeak: true,
-    hold: true,        // 「贴上」总闸：打开则阶段值继续累积，关掉就停在当前值
+    hold: true,        // 「贴上 / 拿起」总闸：贴上＝阶段值继续累积，拿起＝停在当前值
     slow: 1,           // 累积减速倍数（冲刺完成后设成 dashRate，重开装置时回到 1）
     recFreq: true,
     // 语音（VOC）：off / buzz（振动音）/ tts（TTS 语音）/ both（两者都开）
@@ -3272,11 +3275,14 @@ textarea{
   }
 
   /* =========================================================
-   * 4b. 阶段值的两个闸门：贴上 / 已满
+   * 4b. 阶段值的两个闸门：贴上 / 拿起 / 已满
    *
-   * 「贴上」是一道总闸：打开时阶段值照常累积；关掉就停在当前值不动。
+   * 「贴上 / 拿起」是一道总闸，描述的是"装置还在不在身上"：
+   *   贴上 → 装置在，刺激在走，阶段值照常累积
+   *   拿起 → 装置被拿走，刺激停下，阶段值停在当前值不动
+   *   按钮上写当前状态，点一下就切换。
    *   注意它只拦累积，不拦玩家主动按的「冲击」「临界」「冲刺」——
-   *   关掉是"不再自己往上涨"，不是"把面板锁死"。
+   *   "拿起"是"不再自己往上涨"，不是"把面板锁死"。
    *
    * 阶段值满了（hi）不再像以前那样自动轮回重头：满值本身是一道锁，
    *   锁住累积，同时解锁「冲刺」。要离开满值只有两条路，都得玩家按：
@@ -3284,7 +3290,7 @@ textarea{
    *     · 冲刺 → 装置直冲顶点，完事后阶段值重来，而且之后要花更久才爬得回来
    * ======================================================= */
   function pushAro(d) {
-    if (!S.hold || d <= 0) return;              // 闸门关着：不涨
+    if (!S.hold || d <= 0) return;              // 装置被拿起了：不涨
     if (S.hi || S.aro >= 100) { S.aro = 100; return; }
     S.aro = clamp(S.aro + d, 0, 100);
   }
@@ -3323,15 +3329,22 @@ textarea{
     toast('阶段值已满', 2600);
   }
 
-  /* 「贴上」开关：打开就一直往上走，关掉就不再增加 */
+  /* 「贴上 / 拿起」开关。
+     它就是"装置还在不在身上"这一个物理事实：
+       贴上 —— 装置在，刺激在走，阶段值照常累积
+       拿起 —— 装置被拿走，刺激停下，阶段值不再增加
+     按钮上写的是**当前状态**（贴在身上就显示"贴上"，拿起来了就显示"拿起"），
+     不是"按下去会做什么"。这样一眼就能看出装置现在在哪。 */
   $('#btn-hold').addEventListener('click', function () {
     S.hold = !S.hold;
     this.classList.toggle('on', S.hold);
-    this.textContent = S.hold ? '贴上 · 累积中' : '贴上 · 已停';
-    S.lastEvent = S.hold ? '重新贴上，阶段值继续累积' : '停止刺激，阶段值不再增加';
-    toast(S.hold ? '贴上：阶段值继续上涨' : '已揭开：阶段值不再增加');
+    this.textContent = S.hold ? '贴上' : '拿起';
+    S.lastEvent = S.hold ? '重新贴上，阶段值继续累积' : '把装置拿起来，刺激停下，阶段值不再增加';
+    toast(S.hold ? '贴上：装置还贴着，阶段值继续上涨' : '拿起：装置已离开，阶段值不再增加');
     render();
-    pushAction(act('把装置重新贴回去，继续刺激', '重新贴上装置，继续刺激'));
+    pushAction(act(
+      S.hold ? '把装置重新贴回去，继续刺激' : '把装置拿起来，先停一会儿',
+      S.hold ? '重新贴上装置，继续刺激' : '把装置拿起来'));
     persist();
     if (S.auto) react('mode');
   });
@@ -3385,11 +3398,15 @@ textarea{
     })();
   }
 
+  /* 按钮上写的是当前状态：贴着就显示"贴上"，拿起来了就显示"拿起" */
   function paintHold() {
     var b = gateEl('btn-hold');
     if (!b) return;
     b.classList.toggle('on', S.hold);
-    b.textContent = S.hold ? '贴上 · 累积中' : '贴上 · 已停';
+    b.textContent = S.hold ? '贴上' : '拿起';
+    b.title = S.hold
+      ? '装置贴着，阶段值继续累积。点它＝把装置拿起来'
+      : '装置已拿起，阶段值不再增加。点它＝重新贴上';
   }
 
   /* 「临界」「冲刺」的解锁由阶段值直接决定：
@@ -4017,14 +4034,15 @@ textarea{
     L.push('模式：' + m.name + '｜频率：' + hz().toFixed(1) + ' Hz｜强度：' + S.pow + '%');
     L.push('已持续：' + fmtTime(S.t) + (S.limit > 0 ? '｜本次限时：' + S.limit + ' 分钟' : ''));
     L.push('阶段：第 ' + S.stage + ' 阶段·' + sn + '（累积 ' + Math.round(S.aro) + '/100，累计临界 ' + S.peak + ' 次）');
-    // 满值与"贴上"必须明说，否则 AI 会一直写"还在往上爬"，跟面板对不上
+    // 满值与"装置还在不在身上"必须明说，否则 AI 会一直写"还在往上爬"，跟面板对不上
     if (S.hi) {
       L.push('▲ 累积已经满格：' + wn + ' 顶到头了，不会自己再涨。'
         + '要往下走只有两条路，都是玩家亲手按的 —— 「临界」（放回临界区间或从头开始）或「冲刺」（直冲顶点，之后归零并放慢）。'
         + '这一轮不要写"数值继续攀升"，改写"停在顶点上被反复摩擦、等着那一下"。');
     } else if (!S.hold) {
-      L.push('▲ 装置已经揭开，刺激停下：累积值冻结在当前这一档，不会继续增加。'
-        + '可以写余韵、喘息、缓过来，或者反过来写"忽然空下来"的难耐，但不要写数值还在涨。');
+      L.push('▲ 装置已经被拿起来、离开了身体，刺激停下：累积值冻结在当前这一档，不会继续增加。'
+        + '可以写余韵、喘息、缓过来，或者反过来写"忽然空下来"的难耐，但不要写数值还在涨，'
+        + '也不要写装置还在身上震。');
     }
     L.push('最近变化：' + S.lastEvent);
     if (S.lastActionNote) {
@@ -5340,7 +5358,7 @@ textarea{
     S.aro = 0;
     S.stage = 1;
     S.hi = false;       // 新一轮：满值锁解除
-    S.slow = 1;         // 新一轮：冲刺留下的减速清掉（贴上的开关是玩家设置，保留）
+    S.slow = 1;         // 新一轮：冲刺留下的减速清掉（贴上/拿起是玩家设置，保留）
     S.stopReason = '';
     lastPhys = 0;
     if (S.audio) AUD.start();
@@ -5483,7 +5501,7 @@ textarea{
   $('#power').addEventListener('click', function () { S.on ? stop() : start(); });
   $('#btn-burst').addEventListener('click', function () {
     if (!S.on) { toast('先启动装置'); return; }
-    // 冲击是玩家主动按的，不受「贴上」总闸限制 —— 总闸管的是"自己还涨不涨"
+    // 冲击是玩家主动按的，不受「贴上/拿起」总闸限制 —— 总闸管的是"装置在不在身上"
     if (S.hi || S.aro >= 100) { toast('阶段值已经满了 —— 该按「临界」或「冲刺」', 2800); return; }
     pushAro(26);
     S.env = 1;
