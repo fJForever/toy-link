@@ -961,24 +961,16 @@ textarea{
     <section class="panel">
       <h3>音色与合成参数</h3>
       <div class="field col">
-        <div class="lb"><b>你拿着遥控器时的音色</b><small>被作用的是 TA，出的是呻吟。可以直接选下面两个现成的，也可以改成你自己的。</small></div>
-        <div class="row2">
-          <select class="txt" id="s-voice-1" style="flex:1;min-width:0"></select>
-          <button class="mini" id="c-voice-1-own">自定义</button>
-        </div>
-        <input class="txt" id="s-voice-1-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" style="width:100%;margin-top:7px;display:none">
+        <div class="lb"><b>你拿着遥控器时的音色</b><small>被作用的是 TA，出的是呻吟。填你所用平台上的音色 ID。</small></div>
+        <input class="txt" id="s-voice-1-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
       </div>
       <div class="field">
-        <div class="lb"><b>TA 拿着遥控器时用另一个音色</b><small>开着才能选下面那个。同一个角色一般不需要，除非你想让"操控的语气"听起来是另一个人。</small></div>
+        <div class="lb"><b>TA 拿着遥控器时用另一个音色</b><small>开着才能填下面那个。同一个角色一般不需要，除非你想让"操控的语气"听起来是另一个人。</small></div>
         <div class="sw" id="s-voice-two"><i></i></div>
       </div>
       <div class="field col" id="s-voice-2-box" style="display:none">
         <div class="lb"><b>TA 拿着遥控器时的音色</b><small>被作用的是你，TA 出的是调教对白。</small></div>
-        <div class="row2">
-          <select class="txt" id="s-voice-2" style="flex:1;min-width:0"></select>
-          <button class="mini" id="c-voice-2-own">自定义</button>
-        </div>
-        <input class="txt" id="s-voice-2-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" style="width:100%;margin-top:7px;display:none">
+        <input class="txt" id="s-voice-2-input" type="text" placeholder="音色 ID" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
       </div>
       <div class="field">
         <div class="lb"><b>模型</b><small>按中转支持的模型名填。</small></div>
@@ -1275,7 +1267,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.14';
+  var VERSION = '1.13.15';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -5313,76 +5305,27 @@ textarea{
   var AUTH_LABEL = { bearer: 'Bearer', raw: '裸 Authorization', 'x-api-key': 'x-api-key', none: '不带' };
   var AUTH_ORDER = ['bearer', 'raw', 'x-api-key', 'none'];
 
-  /* 现成音色 + 自定义。value 就是中转侧的音色 ID，中间不要加空格。 */
-  var VOICE_PRESETS = [
-    { label: '奶狗弟弟', value: '34c96cabe34d44d2bea354ba7a6bc0eb' },
-    { label: '年轻姐姐', value: '73647cd4ff7c477cb787d5fd8068f3e8' }
-  ];
-  var VOICE_CUSTOM = { label: '自定义…', value: '' };
-
-  /* 把某个槽位（1 = 你拿着遥控器，2 = TA 拿着遥控器）的下拉填好并同步状态。
-     值不是预设之一就切到「自定义…」并把输入框亮出来，不擅自改用户存的 ID。 */
+  /* 音色槽位（1 = 你拿着遥控器，2 = TA 拿着遥控器）。
+     这里不预置任何具体音色 ID —— 音色是各平台自己的，写死一个等于给别的平台埋一个必然失败的默认值。
+     用户填的 ID 原样保存，只在两侧去空白（复制时容易带上）。 */
   function fillVoiceSelect(n) {
-    var sel = $('#s-voice-' + n), inp = $('#s-voice-' + n + '-input');
+    var inp = $('#s-voice-' + n + '-input');
+    if (!inp) return;
     var val = (n === 1 ? S.ttsVoice : S.ttsVoiceTease) || '';
-    if (!sel) return;
-    if (!sel.options.length) {
-      VOICE_PRESETS.forEach(function (p) {
-        var o = document.createElement('option');
-        o.value = p.value;
-        o.textContent = p.label;
-        sel.appendChild(o);
-      });
-      var oc = document.createElement('option');
-      oc.value = VOICE_CUSTOM.value;
-      oc.textContent = VOICE_CUSTOM.label;
-      sel.appendChild(oc);
-    }
-    if (val && VOICE_PRESETS.some(function (p) { return p.value === val; })) {
-      sel.value = val;
-      if (inp) inp.style.display = 'none';
-    } else {
-      sel.value = '';
-      if (inp) {
-        inp.style.display = '';
-        if (val) inp.value = val;
-      }
-    }
+    if (inp.value !== val) inp.value = val;
   }
 
-  /* 音色槽位的接线。用户选的 ID 要原样保存，前后空格顺手去掉（复制时常带）。 */
   function bindVoiceSlot(n, key) {
-    var sel = $('#s-voice-' + n), inp = $('#s-voice-' + n + '-input');
-    if (sel) {
-      sel.addEventListener('change', function () {
-        if (this.value) {
-          S[key] = this.value;
-          if (inp) inp.style.display = 'none';
-        } else {
-          if (inp) { inp.style.display = ''; inp.focus(); }
-          if (!inp || !inp.value.trim()) S[key] = '';
-        }
-        paintVoice(); persist();
-        toast('音色已切到：' + (this.value ? this.options[this.selectedIndex].textContent : '自定义'));
-      });
-    }
-    if (inp) {
-      var apply = function () {
-        S[key] = String(inp.value || '').trim();
-        persist();
-        paintVoice();
-      };
-      inp.addEventListener('input', apply);
-      inp.addEventListener('change', apply);
-      inp.addEventListener('blur', apply);
-    }
-    var ob = $('#c-voice-' + n + '-own');
-    if (ob) {
-      ob.addEventListener('click', function () {
-        if (sel) sel.value = '';
-        if (inp) { inp.style.display = ''; inp.focus(); }
-      });
-    }
+    var inp = $('#s-voice-' + n + '-input');
+    if (!inp) return;
+    var apply = function () {
+      S[key] = String(inp.value || '').trim();
+      persist();
+      paintVoice();
+    };
+    inp.addEventListener('input', apply);
+    inp.addEventListener('change', apply);
+    inp.addEventListener('blur', apply);
   }
 
   /* 第二个音色是可选功能：关掉时清空它，两个档位共用第一个音色 */
