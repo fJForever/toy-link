@@ -624,6 +624,7 @@ input[type=range]::-moz-range-thumb{
   border-top:1px dashed var(--line);font-size:11px;color:var(--dim-2);line-height:1.5;
 }
 .vbar{display:flex;gap:8px;margin-top:7px}
+.ebar{display:flex;gap:8px;margin-top:6px}
 .vplay{
   padding:6px 12px;border-radius:999px;font-size:11.5px;letter-spacing:.04em;
   border:1px solid var(--line);background:rgba(238,222,242,.05);color:var(--dim);
@@ -1323,7 +1324,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.20';
+  var VERSION = '1.13.21';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -3313,10 +3314,12 @@ textarea{
        · 界面上的文字说明（心声）—— 给眼睛看的，"低下头，呼吸乱了一拍。"这种
        · 要念出来的台词（语音）—— 给耳朵听的，带情绪标记，能直接进 TTS
   
-     所以这里**不拿说明文字去凑台词**（那会把叙述念成一本书）。
-     优先级：AI 明写的台词（带标记）> 台词库（自动配标记）。
+     优先顺序（正文对白排在最前，这样"听到的"和"读到的"是同一句话）：
+       1. 正文里引号包住的对白   ← 新增：正文有对白就用它，视听一致
+       2. AI 在读数里明写的语音字段
+       3. 台词库（自动配情绪标记）—— 正文没有对白时的兜底
      force='beg' 时走请求停止那一支。 */
-  function voiceFor(voiceLine, stage, force) {
+  function voiceFor(voiceLine, stage, force, body) {
     var kind = (force === 'beg') ? 'beg' : voiceKind();
     /* 两套音色是可选的：
        默认共用同一个（同一个人不同处境下的声音）；
@@ -3324,15 +3327,50 @@ textarea{
     var voice = (kind === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice;
     var out = { text: '', kind: kind, voice: voice };
 
-    // 1) AI 这一轮明写的台词：有引号/情绪标记/拟声起头就当台词用（这正是它该干的事）
+    // 1) 正文里的对白：有引号、多行、按句截断、丢掉叙述 —— 只要它像台词就优先
+    var spoken = extractSpeech(String(body || ''), kind, stage);
+    if (spoken && voiceish(spoken)) {
+      out.text = spoken;
+      out.fromBody = true;
+      return out;
+    }
+    // 2) AI 在读数里明写的语音字段
     var given = fillName(String(voiceLine || '').trim());
     if (given && voiceish(given)) {
       out.text = hasMark(given) ? given : (voiceMark(kind, stage) + ' ' + given);
       return out;
     }
-    // 2) 退回台词库：按档位取现成的，自动配情绪标记
+    // 3) 退回台词库：按档位取现成的，自动配情绪标记
     out.text = libPick(kind, stage);
     return out;
+  }
+
+  /* 从正文里抽对白：只取引号包住的内容（「」『』“”""），
+     按句号/问号/感叹号切句，每句截到 24 字，最多 3 句拼成多行。
+     正文没有对白时返回 ''，交给上层回退。 */
+  function extractSpeech(body, kind, stage) {
+    var src = String(body || '');
+    if (!src) return '';
+    var out = [], re = /[「『“"]([^」』”"]{1,100})[」』”"]/g, m;
+    while ((m = re.exec(src)) !== null && out.length < 3) {
+      var seg = m[1].replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      seg = seg.replace(/^[，、,。.；;：:\s]+|[，、,。.；;：:\s]+$/g, '');
+      if (!seg) continue;
+      // 一句太长就按句末切，取头一两句
+      if (seg.replace(/\[[^\]]*\]\s*/g, '').length > 24) {
+        var parts = seg.split(/(?<=[。！？!?])/).filter(Boolean);
+        var acc = '';
+        for (var i = 0; i < parts.length; i++) {
+          if ((acc + parts[i]).replace(/\[[^\]]*\]\s*/g, '').length > 32) break;
+          acc += parts[i];
+        }
+        seg = acc || seg.slice(0, 24);
+      }
+      // 原文一般不带标记，补一个，语气才跟着当前处境走
+      if (!hasMark(seg)) seg = voiceMark(kind, stage) + ' ' + seg;
+      out.push(seg);
+    }
+    return out.join('\n');
   }
 
   /* 判断一段文本"是不是台词"：带情绪标记、引号，或者以拟声词起头的短句。
@@ -4106,8 +4144,9 @@ textarea{
       BRIDGE.addMsg({ role: 'assistant', message: body });
       // 面板上只放心声（文字说明），正文已经在聊天记录里了。
       // 语音是另一条内容：AI 明写的台词优先，否则按档位从台词库取 —— 每轮都会有一句。
-      var vt = d.voice || voiceFor(d.voice, S.stage).text;
-      pushMsg('ai', d.heart || heartFallback(), vt);
+      /* 语音：优先取正文里的对白（这样听到的就是读到的那句），正文没有对白才用读数里的语音字段 */
+      var vt = voiceFor(d.voice, S.stage, null, body).text;
+      pushMsg('ai', d.heart || heartFallback(), vt, body);
     };
     if (res && res.then) res.then(done, function () { markIdle(); holdOff(); markPending(false); settleBeg(false); }); else done('');
   }
@@ -4378,9 +4417,9 @@ textarea{
       if (body) {
         // 整条重建：先取好台词（AI 明写的优先，否则按档位从台词库取），
         // 再把 holder 换成标准的「说明 + 台词 + 播放键」结构 —— 和另一条路径一致。
-        var vt2 = voiceFor(d.voice, S.stage).text;
+        var vt2 = voiceFor(d.voice, S.stage, null, body).text;
         holder.remove();
-        pushMsg('ai', d.heart || heartFallback(), vt2);
+        pushMsg('ai', d.heart || heartFallback(), vt2, body);
         BRIDGE.addMsg({ role: 'assistant', message: body }, { refresh: 'none' });
         settleBeg(true);
       } else {
@@ -4394,32 +4433,37 @@ textarea{
   }
 
   // ---- 离线演示 ----
-  // 每一组 = 说明文字 + 对应台词。演示模式也要"正文一轮、声音一轮"，
-  // 不然看不出语音长什么样。说明是叙述，台词是能念出来的话，两者不混。
-  // 台词照正式格式写：2-3 行，每行开口一个情绪标记。
+  // 每组 = 正文（可能带引号对白）+ 说明文字 + 兜底台词。
+  // 带对白的组演示"正文说什么就念什么"；不带的组演示"正文没对白 → 用台词库"。
   var FAKE = {
     low: [
-      { n: '轻轻吸了口气，膝盖不自觉地并了并。',
+      { b: '她抬眼看了一下，又飞快地移开。\n「嗯……你怎么突然……」\n后半句没说完，她自己先笑了。',
+        n: '轻轻吸了口气，膝盖不自觉地并了并。',
         v: '[气声] 嗯……\n[soft tone] 你怎么突然……\n[chuckling] 没事，你继续。' },
       { n: '攥住手边的布料，声音里带出一点黏。',
         v: '[whispering] 唔……别、别这样……\n[soft tone] 有人会看见的……\n[sighing] 算了，当我没说。' },
-      { n: '低下头，呼吸乱了一拍。',
+      { b: '她低下头，呼吸乱了一拍。\n「不、不行……你等一下……」',
+        n: '低下头，呼吸乱了一拍。',
         v: '[panting] 哈啊……等一下……\n[inhale] 我缓一缓就好。\n[soft tone] 你、你别过来。' }
     ],
     mid: [
-      { n: '整个人抖了一下，指尖掐进掌心，喉咙里漏出一声没压住的轻哼。',
+      { b: '她整个人抖了一下，指尖掐进掌心。\n「你手别动……我真的会叫出来的。」',
+        n: '整个人抖了一下，指尖掐进掌心，喉咙里漏出一声没压住的轻哼。',
         v: '[panting] 不、不行……\n[gasping] 你手别动……\n[sobbing] 我真的会叫出来的。' },
       { n: '试着稳住呼吸，可腰已经自己塌了下去。',
         v: '[gasping] 啊——嗯……不要……\n[panting][气声] 慢、慢一点……\n[whispering] 求你，别看我的脸。' },
-      { n: '声音开始发飘，一句话断成三截。',
+      { b: '「我说不……说不完整了……」\n后半句被自己咽了回去，只剩一点气音。',
+        n: '声音开始发飘，一句话断成三截。',
         v: '[panting][气声] 我说不……说不完整了……\n[groaning] 唔……你满意了？\n[chuckling] 别、别笑……' }
     ],
     high: [
-      { n: '再也说不出完整的句子，只剩下贴着牙齿的呜咽。',
+      { b: '「不要了……求你……」\n她整个人弓起来，声音已经不成样子。\n「抱一下我……就一下。」',
+        n: '再也说不出完整的句子，只剩下贴着牙齿的呜咽。',
         v: '[sobbing][gasping] 不要了……求你……\n[crying loudly] 我真的受不了了……\n[whispering] 抱一下我……就一下。' },
       { n: '弓起背，指节泛白，一声比一声更哑。',
         v: '[gasping][颤抖] 不行……我真的不行……\n[groaning] 唔……嗓子哑了……\n[sighing] 随你吧……' },
-      { n: '意识被搅成一团白光，只能本能地追着那点节奏。',
+      { b: '「我什么都不知道了……」\n这一句几乎听不出字，尾音散在喘里。',
+        n: '意识被搅成一团白光，只能本能地追着那点节奏。',
         v: '[sobbing] 啊……啊——\n[panting] 哈啊……哈啊……\n[whispering] 我什么都不知道了……' }
     ]
   };
@@ -4427,8 +4471,8 @@ textarea{
     var bank = S.aro < 25 ? FAKE.low : (S.aro < 65 ? FAKE.mid : FAKE.high);
     var pick = bank[Math.floor(Math.random() * bank.length)];
     setTimeout(function () {
-      // 直接把成对的内容交给 pushMsg：说明文字 + 台词（台词会配播放键并自动播）
-      pushMsg('ai', pick.n, pick.v);
+      // 有正文就一起交给 pushMsg：它会先从句子里抽对白当台词，抽不到才用兜底台词
+      pushMsg('ai', pick.n, pick.v, pick.b || '');
     }, 420);
   }
 
@@ -4450,7 +4494,7 @@ textarea{
      说明文字常驻显示，台词带情绪标记并配播放键 —— 两者职责不混。
      台词相关的节点挂在 rec 上，供「重写这句」取用（每次都从 DOM 现取，不用闭包里的旧引用，
      否则重写一次之后闭包指向的就是被换掉的旧节点了）。 */
-  function pushMsg(kind, text, speak) {
+  function pushMsg(kind, text, speak, body) {
     var feed = $('#feed');
     var empty = feed.querySelector('.feed-empty');
     if (empty) empty.remove();
@@ -4459,7 +4503,19 @@ textarea{
     var who = kind === 'ai' ? heartLabel() : (kind === 'me' ? '你' : '装置');
     el.innerHTML = '<div class="who"><i></i>' + who + '</div><div class="bubble"></div>';
 
-    var rec = { root: el, text: String(text || ''), voice: String(speak || '').trim(), prev: '' };
+    /* 台词来源：正文对白 > 传进来的 speak > 台词库。
+       正文有对话时，念出来的就是你在正文里读到的那一句 —— 视听一致。 */
+    var voiceText = String(speak || '').trim();
+    var fromBody = '';
+    if (kind === 'ai' && String(body || '').trim()) {
+      fromBody = extractSpeech(body, voiceKind(), S.stage);
+    }
+    if (fromBody && voiceish(fromBody)) voiceText = fromBody;
+    else if (!voiceText || !voiceish(voiceText)) {
+      voiceText = fromBody || voiceFor(voiceText, S.stage, null, body).text;
+    }
+
+    var rec = { root: el, text: String(text || ''), voice: voiceText, prev: '' };
     var bubble = el.querySelector('.bubble');
     // skipSub：重写时用 —— 旧的那种不带"说明"分支只为了兼容 pushMsg('ai','') 的占位调用
     var sub = null;
@@ -4521,11 +4577,13 @@ textarea{
     }
     return bar;
   }
-  /* 重写按钮：把这一条挂到顶部重写栏当目标 */
+  /* 重写按钮：把这一条挂到顶部重写栏当目标。
+     用 .ebar 而不是 .vbar —— 两者样式几乎一样，但混用会让「播放条数量」这类检查失真，
+     也让 CSS 里出现规则打架。 */
   function editBtnFor(rec) {
     if (!rec.voice) return;
     var wrap = document.createElement('div');
-    wrap.className = 'vbar';
+    wrap.className = 'ebar';
     var b = document.createElement('button');
     b.className = 'vplay';
     b.type = 'button';
