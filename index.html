@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -985,30 +985,40 @@ textarea{
 
     <section class="panel">
       <h3>连接</h3>
-      <div class="field">
-        <div class="lb"><b>传输方式</b><small id="s-transport-note"></small></div>
-        <button class="mini" id="s-transport">经本机转发</button>
+      <div class="field col">
+        <div class="lb"><b>连到哪儿</b><small id="s-transport-note"></small></div>
+        <!-- 两个选项：官网直连（打官方端点）/ 中转（打你自己的中转站）。
+             以前只有一个"经本机转发"的按钮在两种传输方式之间切，
+             名字里没提"官方还是中转"，结果让人以为"直连中转"就是官网直连。 -->
+        <div class="gate" id="s-transport" style="margin-top:8px">
+          <button type="button" id="s-tp-official">官网直连</button>
+          <button type="button" id="s-tp-relay">中转</button>
+        </div>
       </div>
       <div class="field col">
-        <div class="lb"><b>合成地址</b><small>中转的完整接口地址，例如 <code>https://你的中转域名/v1/tts</code>。<br>两种传输方式都用它 —— 经转发时由转发脚本打到这儿，直连时面板自己打。</small></div>
-        <input class="txt" id="s-tts-target" type="text" placeholder="https://你的中转域名/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+        <div class="lb"><b id="s-target-lb">合成地址</b><small id="s-target-note"></small></div>
+        <input class="txt" id="s-tts-target" type="text" placeholder="https://api.fish.audio/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+      </div>
+      <div class="field">
+        <div class="lb"><b>经本机转发</b><small id="s-forward-note">关着＝浏览器直接发请求；打开＝请求交给本机脚本发出去（跑 <code>node 工具-转发.js</code>），不受跨域限制。</small></div>
+        <div class="sw" id="s-tp-forward"><i></i></div>
       </div>
       <div id="s-relay-box">
         <div class="field col">
-          <div class="lb"><b>转发地址</b><small>本机转发脚本的地址。先在命令行跑 <code>node 工具-转发.js</code>。令牌填在脚本那边（<code>relay-key.txt</code>），面板里不存。</small></div>
+          <div class="lb"><b>转发地址</b><small>本机转发脚本的地址。令牌填在脚本那边（<code>relay-key.txt</code>），面板里不存。</small></div>
           <input class="txt" id="s-tts-proxy" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
         </div>
       </div>
       <div id="s-direct-box">
         <div class="field col">
-          <div class="lb"><b>令牌</b><small><b style="color:var(--amber)">直连才需要填。</b>按密码处理：输入时是遮住的，右边可以临时看一眼。它会存在本机（跟着用户存档），新建对话不用重填。</small></div>
+          <div class="lb"><b id="s-key-lb">令牌</b><small id="s-key-note"></small></div>
           <div class="txt-wrap">
-            <input class="txt" id="s-tts-key" type="password" placeholder="中转给你的 API Key" autocomplete="new-password" spellcheck="false" enterkeyhint="done" style="width:100%">
+            <input class="txt" id="s-tts-key" type="password" placeholder="API Key" autocomplete="new-password" spellcheck="false" enterkeyhint="done" style="width:100%">
             <button type="button" class="eye" id="c-eye-key" aria-label="显示或隐藏令牌">显示</button>
           </div>
         </div>
         <div class="field">
-          <div class="lb"><b>鉴权方式</b><small>中转不走标准 Bearer 时改这里。</small></div>
+          <div class="lb"><b>鉴权方式</b><small id="s-auth-note">官方与多数中转都走标准 Bearer，不用改。</small></div>
           <button class="mini" id="s-tts-authstyle">Bearer</button>
         </div>
       </div>
@@ -1450,7 +1460,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.32';
+  var VERSION = '1.13.33';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2534,7 +2544,8 @@ textarea{
        relay：经本机转发 —— 留作备份：中转没开跨域时用它绕开浏览器限制 */
     ttsTransport: 'direct',
     ttsKey: '',          // 直连模式才用；经转发时留空，令牌在转发脚本那边
-    ttsTarget: '',       // 中转的合成地址
+    ttsTarget: '',       // 当前要打的完整地址（官网端点或你自己的中转地址）
+    relaySavedTarget: '', // 「官网直连」之前那个中转地址，切回「中转」时还回去
     ttsVoice: '',        // 你拿着遥控器时的音色（被作用的是 TA，出呻吟）
     ttsVoiceTease: '',   // TA 拿着遥控器时的音色（出调教对白）。留空 = 与上面共用同一个
     ttsModel: 's2.1-pro-free',
@@ -2925,13 +2936,17 @@ textarea{
         else if (c.authstyle !== 'none' && c.key) h['Authorization'] = 'Bearer ' + c.key;
         if (c.model && !c.noModelHdr) h[c.modelHdr] = c.model;
       } else {
-        // 令牌留在转发脚本那边，这里只告诉它打哪、用什么模型、怎么鉴权
+        // 告诉脚本：打哪、用什么模型、怎么鉴权
         h['x-toylink-target'] = c.target || '';
         if (c.model) h['x-toylink-model'] = c.model;
         if (c.modelHdr && c.modelHdr !== 'model') h['x-toylink-modelheader'] = c.modelHdr;
         // 平台级别的"不发 model 头"也要传过去，否则转发脚本会自作主张带上
         if (c.noModelHdr) h['x-toylink-noheaders'] = '1';
         if (c.authstyle && c.authstyle !== 'bearer') h['x-toylink-auth'] = c.authstyle;
+        /* 面板填了令牌就带给脚本（脚本那边 x-toylink-key 优先于 relay-key.txt）。
+           以前这里完全没带 —— 于是"官网 + 经本机转发"时用户在面板里根本找不到
+           填 key 的地方，只能去改 relay-key.txt。 */
+        if (c.authstyle !== 'none' && c.key) h['x-toylink-key'] = c.key;
       }
       // 额外请求头：直连时直接合并；经转发时整块交给脚本合并
       if (c.extraRaw) {
@@ -2974,6 +2989,99 @@ textarea{
       return p.req(c, text, vv);
     }
 
+    /* ---------- MiniMax 的 hex 音频解包 ----------
+       MiniMax T2A 返回 JSON：{ data: { audio: "<hex>", status: 2 },
+                                base_resp: { status_code: 0, status_msg: "success" } }
+       音频是十六进制字符串，得转回字节数组才喂得进播放器。
+       三个容易踩的点：
+         ① base_resp.status_code 才是成败判据 —— HTTP 200 也可能失败；
+         ② data 可能是 null（官方文档明说要判空）；
+         ③ 音频很长时 hex 串能到几十万字符，必须用 typed array 逐字节填，
+            别用 push/concat（那样会慢到卡住界面）。 */
+    function hexToBytes(hex) {
+      var s = String(hex || '').replace(/[\s\r\n]+/g, '');
+      if (s.length < 2) return null;
+      if (s.length % 2 !== 0) s = s.slice(0, -1);        // 奇数个字符：丢掉最后一个
+      var n = s.length >> 1;
+      var out = new Uint8Array(n);
+      for (var i = 0; i < n; i++) {
+        var b = parseInt(s.substr(i * 2, 2), 16);
+        if (isNaN(b)) { vlog('hex 音频里有非十六进制字符（第 ' + (i * 2) + ' 个字符），已中断', 'err'); return null; }
+        out[i] = b;
+      }
+      return out;
+    }
+
+    function parseMinimaxJSON(tx, ms) {
+      var j;
+      try { j = JSON.parse(String(tx || '')); }
+      catch (e) {
+        vlog('MiniMax 回的 JSON 解析不了：' + esc4(String(tx || '').slice(0, 160)), 'err');
+        throw new Error('MiniMax 回的 JSON 解析不了');
+      }
+      var br = j.base_resp || {};
+      if (br.status_code !== 0) {
+        var how = br.status_code === 1004 ? ' ← 鉴权失败，检查 API key'
+          : br.status_code === 1002 ? ' ← 触发限流（并发/配额）'
+            : br.status_code === 1039 ? ' ← TPM 限流：一分钟内字符数超了'
+              : br.status_code === 1001 ? ' ← 上游超时'
+                : br.status_code === 1042 ? ' ← 无效字符超过 10%，被拒'
+                  : br.status_code === 2013 ? ' ← 入参不合法（模型名/音色 ID 对不上？）' : '';
+        vlog('MiniMax 返回失败 ' + br.status_code + '：' + esc4(String(br.status_msg || '')) + how, 'err');
+        throw new Error('MiniMax ' + br.status_code + '：' + String(br.status_msg || ''));
+      }
+      var d = j.data;
+      if (!d) { vlog('MiniMax 回了 status_code=0 但没有 data（官方文档说这种情况要判空）', 'err'); throw new Error('MiniMax 没有返回音频数据'); }
+      var bytes = hexToBytes(d.audio);
+      if (!bytes || !bytes.length) { vlog('MiniMax 的 data.audio 是空的或不是合法 hex', 'err'); throw new Error('MiniMax 没有返回可用音频'); }
+      var ei = j.extra_info || {};
+      vlog('MiniMax 解包完成 ' + Math.round(bytes.length / 1024 * 10) / 10 + ' KB · ' + (ms || '?') + 'ms'
+        + (ei.audio_length ? ' · 音频 ' + (Math.round(ei.audio_length / 100) / 10) + ' 秒' : '')
+        + (ei.usage_characters ? ' · 计费 ' + ei.usage_characters + ' 字符' : ''), 'ok');
+      return bytes.buffer;
+    }
+
+    /* ---------- 送去合成前，标记怎么处理 ----------
+       多数平台（Fish、OpenAI）不认识方括号标记，念出来会变成噪音 —— 一律删掉。
+       MiniMax 是例外：它认「（全角括号）」的插词，而且官方只认固定一张表。
+       不在表里的（[whispering]、[颤抖] 这类）如果原样转过去会被当正文念出来，
+       所以只转换认识的，其余一律删 —— 宁可少一点语气，也不要念出噪音。
+       另外这张表只在 speech-2.8 系列上生效，换别的模型全删。 */
+    var MM_FX = {
+      '气声': 'breath', '喘息': 'pant', '抽气': 'gasps', '吸气': 'inhale', '呼气': 'exhale',
+      '笑': 'laughs', '轻笑': 'chuckle', '咳嗽': 'coughs', '清嗓': 'clear-throat',
+      '闷哼': 'groans', '抽鼻子': 'sniffs', '叹气': 'sighs', '鼻音': 'snorts',
+      '打嗝': 'burps', '咂嘴': 'lip-smacking', '哼': 'humming', '嘶声': 'hissing',
+      '沉吟': 'emm', '喷嚏': 'sneezes'
+    };
+    /* 官方支持的英文标记原样可用，一并放进白名单 */
+    ['laughs', 'chuckle', 'coughs', 'clear-throat', 'groans', 'breath', 'pant',
+      'inhale', 'exhale', 'gasps', 'sniffs', 'sighs', 'snorts', 'burps',
+      'lip-smacking', 'humming', 'hissing', 'emm', 'sneezes'].forEach(function (k) {
+      MM_FX[k] = k;
+    });
+
+    function stripMarks(s) { return String(s == null ? '' : s).replace(/\[[^\]]*\]\s*/g, ''); }
+
+    function miniMarks(s) {
+      var mdl = String(S.ttsModel || '');
+      if (mdl.indexOf('2.8') < 0) return stripMarks(s);   // 老模型不认插词，全删
+      return String(s == null ? '' : s).replace(/\[([^\]]+)\]/g, function (_, inner) {
+        var key = String(inner).trim();
+        var hit = MM_FX[key] || MM_FX[key.toLowerCase()];
+        return hit ? '（' + hit + '）' : ' ';
+      });
+    }
+
+    /* 一份台词送去合成前的清洗：去掉方括号标记（MiniMax 换成括号插词），多行并成一句 */
+    function speakText(plat, text) {
+      var one = (plat === 'minimax') ? miniMarks : stripMarks;
+      var s = String(text || '').split(/[\r\n]+/).map(function (l) { return one(l).trim(); })
+        .filter(Boolean).join('，');
+      if (!s) s = one(text).trim();
+      return s;
+    }
+
     function synth(text, voice) {
       var c = cfgNow();
       if (!c.target) { vlog('没填合成地址', 'err'); return Promise.reject(new Error('没填合成地址')); }
@@ -2985,12 +3093,9 @@ textarea{
       }
       var url = c.endpoint;
       var vv = voice || S.ttsVoice;
-      /* 多行台词原样送去合成（模型会按行/句切分），但每行的情绪标记要去掉 ——
-         标记是给我们看的、也是给模型的提示，念出来会变成噪音。 */
-      var speak = String(text || '').split(/[\r\n]+/).map(function (l) {
-        return l.replace(/\[[^\]]*\]\s*/g, '').trim();
-      }).filter(Boolean).join('，');
-      if (!speak) speak = String(text || '').replace(/\[[^\]]*\]\s*/g, '').trim();
+      /* 多行台词原样送去合成（模型会按行/句切分），但每行的情绪标记要先处理掉。
+         具体怎么处理见上面 speakText —— MiniMax 换全角括号插词、其余平台删掉。 */
+      var speak = speakText(c.plat, text);
       var k = vkey(text, vv);
       var t0 = Date.now();
       vlog('请求 ' + String(text).slice(0, 34) + ' · ' + nBytes(speak) + ' 字节 · '
@@ -3044,6 +3149,11 @@ textarea{
           }
           var ct = r.headers.get('content-type') || '';
           if (ct.indexOf('json') >= 0) {
+            /* 有的平台就是回 JSON —— MiniMax 把音频塞在 data.audio 里、还是 hex 字符串。
+               这类走各自的解析函数；其余情况照旧按"不是音频"报错。 */
+            if (c.plat === 'minimax' || PLATFORMS[c.plat] && PLATFORMS[c.plat].resp === 'minimax') {
+              return r.text().then(function (tx) { return parseMinimaxJSON(tx, ms); });
+            }
             return r.text().then(function (tx) {
               vlog('上游回的是 JSON 不是音频：' + String(tx || '').slice(0, 160), 'err');
               throw new Error('上游不是音频：' + String(tx || '').slice(0, 200));
@@ -3051,6 +3161,17 @@ textarea{
           }
           return r.arrayBuffer().then(function (buf) {
             if (timer) clearTimeout(timer);
+            /* 少数中转不带 content-type，直接把 JSON 当纯文本发回来。
+               这里认一下：开头是 { 就先按 JSON 试，失败再当音频。 */
+            if (c.plat === 'minimax' && buf && buf.byteLength > 2) {
+              var head = new Uint8Array(buf, 0, 1);
+              if (head[0] === 0x7B) {   // '{'
+                try {
+                  var txt = new TextDecoder('utf-8').decode(buf);
+                  return parseMinimaxJSON(txt, ms);
+                } catch (e) { /* 认错了，继续当音频处理 */ }
+              }
+            }
             var total = Date.now() - t0;
             var kb = buf ? Math.round(buf.byteLength / 1024 * 10) / 10 : 0;
             vlog('收到音频 ' + kb + ' KB · ' + total + 'ms · ' + (ct || '无类型'), 'ok');
@@ -6144,6 +6265,42 @@ textarea{
         return b;
       }
     },
+    /* MiniMax（T2A v2）。和上面两家最大的不同有两点：
+       ① 它返回的是 **JSON**，音频藏在 `data.audio` 里、还是 **hex 编码**的字符串，
+          不是音频二进制 —— 所以要靠 resp:'minimax' 走另一条解析路径；
+       ② 情绪/喘息的写法是**全角括号**（气声）（pant），不是 [方括号]。
+          官方还只在 speech-2.8 系列上支持这类插词，其余模型会把它当正文念出来，
+          所以标记转不转要跟着模型名走。
+       注意：界面下拉里暂时没放出这一项（见平台选择框里的注释）——
+       官方端点是否允许浏览器直连还没实测，先留着代码不暴露入口。 */
+    minimax: {
+      name: 'MiniMax 语音',
+      lib: 'https://platform.minimax.io/',
+      libHint: '开放平台的音色列表（System Voice ID List）里复制 voice_id，'
+        + '形如 Chinese (Mandarin)_Lyrical_Voice、English_Graceful_Lady',
+      voiceField: 'voice_id',
+      voiceHint: '填 voice_id（如 Chinese (Mandarin)_Lyrical_Voice / English_Graceful_Lady），'
+        + '不是十六进制',
+      note: '走 <code>POST /v1/t2a_v2</code>，鉴权只要 <code>Authorization: Bearer &lt;API key&gt;</code>'
+        + '（不需要 GroupId）。<br>音色填 voice_id。'
+        + '<b>情绪标记只在 speech-2.8-hd / speech-2.8-turbo 上生效</b>：'
+        + '换成别的模型（speech-2.6 / speech-02 / speech-01）时面板会自动把标记去掉 ——'
+        + '否则它们会被当正文念出来。',
+      resp: 'minimax',
+      req: function (c, text, vv) {
+        var b = {
+          model: c.model || 'speech-2.8-turbo',
+          text: text,
+          stream: false,
+          language_boost: 'auto',     // 中英混排都能认
+          output_format: 'hex',       // 官方默认就是 hex，写明免得以后默认值变了
+          voice_setting: { speed: c.speed, vol: 1, pitch: 0 },
+          audio_setting: { format: c.format || 'mp3', sample_rate: 32000, bitrate: 128000, channel: 1 }
+        };
+        if (vv) b.voice_setting.voice_id = vv;
+        return b;
+      }
+    },
     custom: {
       name: '其他 / 自定义协议',
       lib: 'https://fish.audio/app/',
@@ -6467,24 +6624,92 @@ textarea{
      导致 paintTransport 根本不存在 —— 启动流程第一次调用它就抛
      "paintTransport is not defined"，整个 boot 中断，window.__TOYLINK__ 永远
      挂不上去，面板看着在、实际全是死的。函数名务必和下面那个 bindVoice 区分开。 */
+  /* 连接面板的显示与说明。
+     两个按钮选择"连到哪儿"（官网 / 中转），一个开关选"走哪条路"（浏览器直打 / 本机转发）。
+     以前只有一个在两种传输方式之间切的按钮，名字里没提官网还是中转，
+     结果让人以为"直连中转"就是官网直连 —— 其实它一直是中转站。 */
+  var OFFICIAL_URL = { fish: 'https://api.fish.audio/v1/tts' };
+  function isOfficial() {
+    var off = OFFICIAL_URL[S.ttsPlatform] || '';
+    return !!off && String(S.ttsTarget || '').indexOf('api.fish.audio') >= 0;
+  }
+
   function paintTransport() {
     var direct = (S.ttsTransport === 'direct');
-    var b = $('#s-transport');
-    if (b) b.textContent = direct ? '直连中转' : '经本机转发';
+    var official = isOfficial();
+    // 两个按钮的选中态
+    var bo = $('#s-tp-official'), br = $('#s-tp-relay');
+    if (bo) bo.classList.toggle('on', official);
+    if (br) br.classList.toggle('on', !official);
+
+    // 字段标题与说明随"连到哪儿"变
+    var tlb = $('#s-target-lb'), tnt = $('#s-target-note');
+    var klb = $('#s-key-lb'), knt = $('#s-key-note'), ant = $('#s-auth-note');
+    if (official) {
+      if (tlb) tlb.textContent = '官方地址';
+      if (tnt) tnt.innerHTML = '官方 TTS 端点。一般不用改 —— 换平台时这里会自动跟着换。';
+      if (klb) klb.textContent = '官方 API Key';
+      if (ant) ant.textContent = '官方走标准 Bearer，不用改。';
+    } else {
+      if (tlb) tlb.textContent = '中转地址';
+      if (tnt) tnt.innerHTML = '你的中转站完整地址，例如 <code>https://你的中转域名/v1/tts</code>。';
+      if (klb) klb.textContent = '中转令牌';
+      if (ant) ant.textContent = '中转不走标准 Bearer 时改这里。';
+    }
+
     var rb = $('#s-relay-box'); if (rb) rb.style.display = direct ? 'none' : 'block';
-    var db = $('#s-direct-box'); if (db) db.style.display = direct ? 'block' : 'none';
+    // 令牌框**始终显示**：不管走直打还是经本机转发，用户都要有地方填 key。
+    // 以前转发模式把它整块藏了，用户只能去改 relay-key.txt —— 那是给排错准备的兜底，
+    // 不该是唯一的入口。
+    var db = $('#s-direct-box'); if (db) db.style.display = 'block';
+
+    // 令牌说明：按"官网/中转"×"直打/转发"四种组合给对应的话
+    if (knt) {
+      if (!direct) {
+        knt.innerHTML = '填了就用这个 key（转发脚本会优先用它）；<b>留空也没关系</b> —— '
+          + '那时用脚本目录里的 <code>relay-key.txt</code>。';
+      } else if (official) {
+        knt.innerHTML = '<b style="color:var(--amber)">官方直连会遇到跨域限制。</b>'
+          + '官方端点不带 CORS 头，浏览器会直接拦下（报 Failed to fetch）。'
+          + '想真正跑通，把上面的「经本机转发」打开 —— 请求由本机脚本发出，就没有这个限制。';
+      } else {
+        knt.innerHTML = '中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
+          + '存在本机（跟着用户存档），新建对话不用重填。'
+          + '<b style="color:var(--amber)">直打会被存进浏览器本地</b>，介意的话打开「经本机转发」。';
+      }
+    }
+
+    // 「经本机转发」开关的外观
+    var fw = $('#s-tp-forward');
+    if (fw) fw.classList.toggle('on', !direct);
+    var fn = $('#s-forward-note');
+    if (fn) {
+      fn.innerHTML = direct
+        ? '关着＝浏览器直接发请求。官方端点多半会被跨域拦下（报 <code>Failed to fetch</code>）。'
+        : '打开＝请求交给本机脚本发出去（<code>node 工具-转发.js</code>），不受跨域限制。'
+          + '此时令牌放脚本那边，面板这一格可以留空。';
+    }
+
     var note = $('#s-transport-note');
     if (note) {
-      /* relay 那一档只在"直连被跨域拦下"时才需要，所以文案里不把它写成必经步骤 */
-    note.innerHTML = direct
-        ? '<b>直连中转：</b>面板直接打到中转，不需要任何本机脚本。'
-          + '要填两样：合成地址、令牌。'
-          + '<br>如果中转没开跨域（错误里会写 Failed to fetch），再切到「经本机转发」。'
-        : '<b>经本机转发：</b>合成请求先发到本机脚本，再由它打到中转 —— '
-          + '用来绕开"中转没开跨域"的情况。这条路要另跑一个 Node 脚本。';
+      note.innerHTML = official
+        ? (direct
+          ? '<b>官网直连：</b>打 Fish 官方端点。'
+            + '<b style="color:var(--amber)">浏览器通常直连不通</b>（官方不给跨域头），'
+            + '真被拦时错误里会写 <code>Failed to fetch</code> —— 那时把「经本机转发」打开。'
+          : '<b>官网 + 经本机转发：</b>请求由本机脚本发到官方端点，'
+            + '不受浏览器跨域限制，这是官方直连真正能跑通的方式。')
+        : (direct
+          ? '<b>中转：</b>面板直接打到你的中转站，不需要任何本机脚本。'
+            + '要填两样：中转地址、令牌。'
+            + '<br>如果中转没开跨域（错误里会写 <code>Failed to fetch</code>），把「经本机转发」打开。'
+          : '<b>中转 + 经本机转发：</b>请求先发到本机脚本，再由它打到中转 —— '
+            + '用来绕开"中转没开跨域"。这条路要另跑一个 Node 脚本。');
     }
+
     var ab = $('#s-tts-authstyle');
     if (ab) ab.textContent = AUTH_LABEL[S.ttsAuth] || 'Bearer';
+
     var h = $('#vs-ping-hint');
     if (h) {
       var base = direct
@@ -7127,17 +7352,40 @@ textarea{
     catch (e) { toast('额外请求头不是合法 JSON，会被忽略', 3200); }
   });
 
-  // 传输方式：两档切换，切了就把该显示的那组字段亮出来
-  onEl('#s-transport', 'click', function () {
+  /* 连到哪儿：官网直连 / 中转。
+     只换"打到哪个地址"，不动用户填的其它东西 —— 中转地址会留着，
+     下次点回「中转」就还在，不用重填。 */
+  onEl('#s-tp-official', 'click', function () {
+    var off = OFFICIAL_URL[S.ttsPlatform];
+    if (!off) { toast('这个平台没有固定官方地址，请用「中转」并自己填地址', 3000); return; }
+    if (isOfficial()) return;                       // 已经是官网，不做无谓的重置
+    S.relaySavedTarget = S.ttsTarget || '';         // 把中转地址记下来，切回来时还回去
+    S.ttsTarget = off;
+    var el = $('#s-tts-target'); if (el) el.value = off;
+    S.ttsTransport = 'direct';                      // 官网默认浏览器直打（会被跨域拦，文案里已说明）
+    paintTransport(); persist();
+    toast('官网直连：已填官方地址。若被跨域拦下，打开「经本机转发」', 3600);
+  });
+  onEl('#s-tp-relay', 'click', function () {
+    if (!isOfficial()) { toast('当前已经是「中转」模式'); return; }
+    // 回到中转：把上次填的中转地址还回去（没有就留空，等用户填）
+    S.ttsTarget = S.relaySavedTarget || '';
+    var el = $('#s-tts-target'); if (el) el.value = S.ttsTarget;
+    paintTransport(); persist();
+    toast(S.ttsTarget ? '已切回「中转」' : '已切回「中转」，填上你的中转地址', 3200);
+  });
+
+  /* 走哪条路：浏览器直打 / 经本机转发。
+     它不影响"连到哪儿"，两条路都能配官网、也都能配中转。 */
+  onEl('#s-tp-forward', 'click', function () {
     S.ttsTransport = (S.ttsTransport === 'direct') ? 'relay' : 'direct';
     paintTransport();
     persist();
-    if (S.ttsTransport === 'direct') {
-      toast('直连中转：要填令牌；若被跨域拦下就切回来');
-    } else {
-      toast('经本机转发：令牌放转发脚本那边');
-    }
+    toast(S.ttsTransport === 'direct'
+      ? '改回浏览器直打（可能被跨域拦下）'
+      : '改走本机转发：请求由 node 工具-转发.js 发出，不受跨域限制', 3200);
   });
+
   // 鉴权方式：四档循环
   onEl('#s-tts-authstyle', 'click', function () {
     var i = AUTH_ORDER.indexOf(S.ttsAuth);
@@ -7444,6 +7692,8 @@ textarea{
     var g = {
       toy_tts_platform: S.ttsPlatform,
       toy_tts_target: S.ttsTarget,
+      // 切到「官网直连」时把原中转地址记下来，切回「中转」要还给用户
+      toy_tts_relay_target: S.relaySavedTarget,
       toy_tts_key: S.ttsKey,
       toy_tts_proxy: S.ttsProxy,
       toy_tts_transport: S.ttsTransport,
@@ -7532,6 +7782,10 @@ textarea{
 
     if (typeof g.toy_tts_platform === 'string' && PLATFORMS[g.toy_tts_platform]) S.ttsPlatform = g.toy_tts_platform;
     if (typeof g.toy_tts_target === 'string') S.ttsTarget = g.toy_tts_target;
+    if (typeof g.toy_tts_relay_target === 'string') S.relaySavedTarget = g.toy_tts_relay_target;
+    /* 老存档里没有 relaySavedTarget：如果当前地址不是官网，就把它当作中转地址记下来 ——
+       否则用户第一次点「官网直连」会把自己填的中转地址弄丢。 */
+    if (!S.relaySavedTarget && S.ttsTarget && !isOfficial()) S.relaySavedTarget = S.ttsTarget;
     if (typeof g.toy_tts_key === 'string') S.ttsKey = g.toy_tts_key;
     if (typeof g.toy_tts_proxy === 'string') S.ttsProxy = g.toy_tts_proxy;
     if (g.toy_tts_transport === 'direct' || g.toy_tts_transport === 'relay') S.ttsTransport = g.toy_tts_transport;

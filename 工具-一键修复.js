@@ -14,7 +14,7 @@
 (() => {
   /* 版本不写死：这个文件在浏览器里会被缓存 7 天，写死的版本号过几天就会把用户"修复"回旧版。
      先问版本指针（raw 翻页最快，放第一个），谁给的版本最新用谁；全都问不到才退回下面这个保底版本。 */
-  var FALLBACK = '1.13.32';
+  var FALLBACK = '1.13.33';
   var FILE = '';
   var POINTERS = [
     'https://raw.githubusercontent.com/fJForever/toy-link/main/version.txt',
