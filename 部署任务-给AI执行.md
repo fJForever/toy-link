@@ -1,4 +1,4 @@
-# 部署任务：TOY·LINK 官网直连中转
+﻿# 部署任务：TOY·LINK 官网直连中转
 
 > 这份文档是给**在服务器上有 shell 权限的 AI 助手**执行的。
 > 读完直接动手，不要提问；遇到文档没覆盖的情况，按"验证步骤"先跑通再说。
@@ -63,7 +63,7 @@ mkdir -p /opt/toylink-relay && cd /opt/toylink-relay
 
 # Node 版中转（零依赖，只需要 Node 18+）
 curl -fsSL -o relay.js \
-  "https://raw.githubusercontent.com/fJForever/toy-link/port-to-1132/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
+  "https://raw.githubusercontent.com/fJForever/toy-link/main/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
 
 # 校验：文件应约 5.9KB，并且含这几个标志
 wc -c relay.js
@@ -76,7 +76,7 @@ node --check relay.js && echo "SYNTAX_OK"
 
 ```bash
 curl -fsSL -o relay.js \
-  "https://fastly.jsdelivr.net/gh/fJForever/toy-link@port-to-1132/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
+  "https://fastly.jsdelivr.net/gh/fJForever/toy-link@main/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
 ```
 
 两个地址都拿不到时，说明网络受限——告诉操作者，不要凭记忆重写这段代码，
