@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
@@ -987,25 +987,25 @@ textarea{
       <h3>连接</h3>
       <div class="field col">
         <div class="lb"><b>连到哪儿</b><small id="s-transport-note"></small></div>
-        <!-- 两个选项：官网直连（打官方端点）/ 中转（打你自己的中转站）。
-             以前只有一个"经本机转发"的按钮在两种传输方式之间切，
-             名字里没提"官方还是中转"，结果让人以为"直连中转"就是官网直连。 -->
+        <!-- 两个互不相干的模式，各自记着自己的地址：
+             官网直连 = 打 Fish 官方端点；中转 = 打你自己填的中转地址。
+             切换时另一边的地址会被留着，来回切不用重填。 -->
         <div class="gate" id="s-transport" style="margin-top:8px">
           <button type="button" id="s-tp-official">官网直连</button>
           <button type="button" id="s-tp-relay">中转</button>
         </div>
       </div>
       <div class="field col">
-        <div class="lb"><b id="s-target-lb">合成地址</b><small id="s-target-note"></small></div>
+        <div class="lb"><b id="s-target-lb">官方地址</b><small id="s-target-note"></small></div>
         <input class="txt" id="s-tts-target" type="text" placeholder="https://api.fish.audio/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
       </div>
       <div class="field">
-        <div class="lb"><b>经本机转发</b><small id="s-forward-note">关着＝浏览器直接发请求；打开＝请求交给本机脚本发出去（跑 <code>node 工具-转发.js</code>），不受跨域限制。</small></div>
-        <div class="sw" id="s-tp-forward"><i></i></div>
+        <div class="lb"><b id="s-forward-lb">走法</b><small id="s-forward-note"></small></div>
+        <button class="mini" id="s-tp-forward">浏览器直打</button>
       </div>
       <div id="s-relay-box">
         <div class="field col">
-          <div class="lb"><b>转发地址</b><small>本机转发脚本的地址。令牌填在脚本那边（<code>relay-key.txt</code>），面板里不存。</small></div>
+          <div class="lb"><b>转发脚本地址</b><small>本机转发脚本的地址。跑 <code>node 工具-转发.js</code>，它打印出来的就是这个。两种模式共用它，不用分开填。</small></div>
           <input class="txt" id="s-tts-proxy" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
         </div>
       </div>
@@ -6679,32 +6679,32 @@ textarea{
       }
     }
 
-    // 「经本机转发」开关的外观
+    // 走法：浏览器直打 / 经本机转发（两种模式共用同一个转发脚本）
     var fw = $('#s-tp-forward');
-    if (fw) fw.classList.toggle('on', !direct);
+    if (fw) {
+      fw.classList.toggle('on', !direct);
+      fw.textContent = direct ? '浏览器直打' : '经本机转发';
+    }
     var fn = $('#s-forward-note');
     if (fn) {
-      fn.innerHTML = direct
-        ? '关着＝浏览器直接发请求。官方端点多半会被跨域拦下（报 <code>Failed to fetch</code>）。'
-        : '打开＝请求交给本机脚本发出去（<code>node 工具-转发.js</code>），不受跨域限制。'
-          + '此时令牌放脚本那边，面板这一格可以留空。';
+      fn.innerHTML = official
+        ? (direct
+          ? '<b style="color:var(--amber)">浏览器直打官方端点通常会被拦</b>（官方不给跨域头，'
+            + '报 <code>Failed to fetch</code>）。点右边这颗切到「经本机转发」才能真正跑通。'
+          : '请求由本机脚本发给官方端点，<b>不受浏览器跨域限制</b> —— 这是官网直连真正能跑通的方式。')
+        : (direct
+          ? '浏览器直接打你的中转站。通不通取决于<b>你的中转有没有开跨域</b>。'
+          : '请求先交给本机脚本，再由它打你的中转站 —— 用来绕开"中转没开跨域"。');
     }
 
     var note = $('#s-transport-note');
     if (note) {
       note.innerHTML = official
-        ? (direct
-          ? '<b>官网直连：</b>打 Fish 官方端点。'
-            + '<b style="color:var(--amber)">浏览器通常直连不通</b>（官方不给跨域头），'
-            + '真被拦时错误里会写 <code>Failed to fetch</code> —— 那时把「经本机转发」打开。'
-          : '<b>官网 + 经本机转发：</b>请求由本机脚本发到官方端点，'
-            + '不受浏览器跨域限制，这是官方直连真正能跑通的方式。')
-        : (direct
-          ? '<b>中转：</b>面板直接打到你的中转站，不需要任何本机脚本。'
-            + '要填两样：中转地址、令牌。'
-            + '<br>如果中转没开跨域（错误里会写 <code>Failed to fetch</code>），把「经本机转发」打开。'
-          : '<b>中转 + 经本机转发：</b>请求先发到本机脚本，再由它打到中转 —— '
-            + '用来绕开"中转没开跨域"。这条路要另跑一个 Node 脚本。');
+        ? '<b>官网直连：</b>打 Fish 官方端点 <code>api.fish.audio</code>，用你自己的官方 API Key。<br>'
+          + '注意：官方的浏览器直连一定失败（没有跨域头），要么走「经本机转发」，'
+          + '要么去给官方提需求。'
+        : '<b>中转：</b>打你自己填的中转地址，用那个中转给你的令牌。<br>'
+          + '这条路不需要官方开放跨域，中转自己开了就行。';
     }
 
     var ab = $('#s-tts-authstyle');
@@ -7375,15 +7375,20 @@ textarea{
     toast(S.ttsTarget ? '已切回「中转」' : '已切回「中转」，填上你的中转地址', 3200);
   });
 
-  /* 走哪条路：浏览器直打 / 经本机转发。
+  /* 走法：浏览器直打 / 经本机转发。
      它不影响"连到哪儿"，两条路都能配官网、也都能配中转。 */
   onEl('#s-tp-forward', 'click', function () {
     S.ttsTransport = (S.ttsTransport === 'direct') ? 'relay' : 'direct';
+    // 第一次切到转发、而转发地址还空着时，给它填上默认值，省得用户去猜格式
+    if (S.ttsTransport === 'relay' && !S.ttsProxy) {
+      S.ttsProxy = 'http://127.0.0.1:8799/v1/tts';
+      var px = $('#s-tts-proxy'); if (px) px.value = S.ttsProxy;
+    }
     paintTransport();
     persist();
     toast(S.ttsTransport === 'direct'
-      ? '改回浏览器直打（可能被跨域拦下）'
-      : '改走本机转发：请求由 node 工具-转发.js 发出，不受跨域限制', 3200);
+      ? '改回「浏览器直打」（官方端点会被跨域拦）'
+      : '改走「经本机转发」：请求由 node 工具-转发.js 发出，没有跨域限制', 3600);
   });
 
   // 鉴权方式：四档循环
