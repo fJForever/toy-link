@@ -999,9 +999,6 @@ textarea{
            所以放在同一处双向联动 —— 选平台自动填它的官方地址，手改地址则认回平台。 -->
       <div class="field col">
         <div class="lb"><b>合成平台</b><small id="s-plat-note"></small></div>
-        <!-- 平台文档/音色库地址常驻在这里。窗口跳转在沙箱 iframe 里可能被静默拦下，
-             留一个真链接兜底：点不动按钮的，点这里、或长按复制都行。 -->
-        <div class="hint" style="margin-top:2px"><a id="s-plat-lib" href="#" target="_blank" rel="noopener noreferrer">音色库</a></div>
         <div class="row2">
           <select class="txt" id="s-platform" style="flex:1;min-width:0">
             <option value="fish">Fish Audio（主推）</option>
@@ -1145,8 +1142,15 @@ textarea{
         </div>
       </div>
       <div class="field">
-        <div class="lb"><b>模型</b><small>按中转支持的模型名填。</small></div>
-        <input class="txt" id="s-tts-model" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done">
+        <div class="lb"><b>模型</b><small id="s-model-hint">按中转支持的模型名填。</small></div>
+        <!-- 可编辑下拉：候选由脚本按当前平台填（见 fillModelOptions），
+             也能直接手打 —— 官方没有"列出 TTS 型号"的接口，那份清单是照文档写死的。 -->
+        <div class="txt-wrap">
+          <input class="txt" id="s-tts-model" type="text" list="s-model-list"
+                 autocomplete="off" spellcheck="false" enterkeyhint="done">
+          <button type="button" class="eye" id="c-model-refresh" aria-label="用当前平台的推荐型号">推荐</button>
+        </div>
+        <datalist id="s-model-list"></datalist>
       </div>
       <div class="field">
         <div class="lb"><b>格式</b><small>mp3 最通用；wav 音质好、体积大；opus 体积最小。</small></div>
@@ -1464,7 +1468,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.38';
+  var VERSION = '1.13.39';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -6275,6 +6279,19 @@ textarea{
       libHint: '进页面后打开音色库（Voice），点进某个音色复制它的 ID',
       voiceField: 'reference_id',
       voiceHint: '在 Fish 音色库页面复制 model id（32 位十六进制）',
+      /* 型号清单按官方文档列（models-overview）：
+         s1 用 (括号) 情绪、S2 系列用 [方括号]；s1 将于 2026-12-31 退役。
+         官方没有"列出 TTS 型号"的接口（GET /model 列的是你的音色，不是引擎型号），
+         所以这里是静态清单，不是拉取来的。 */
+      modelList: [
+        { id: 's2.1-pro', label: 'S2.1-Pro · 推荐，质量最好（计费）' },
+        { id: 's2.1-pro-free', label: 'S2.1-Pro Free · 同一个模型，$0（公平使用限额）' },
+        { id: 's2-pro', label: 'S2-Pro · 上一代' },
+        { id: 's1', label: 'S1 · 已弃用，2026-12-31 退役' }
+      ],
+      modelHint: '官方型号只有这四个（<code>s1</code> 与 S2 系列的情绪写法不同：'
+        + 'S2 用 <code>[方括号]</code>，S1 用 <code>(括号)</code>）。'
+        + '官网没有"列型号"的接口，这份清单照官方文档写死，可以自己改。',
       note: '主推：情绪标记（<code>[panting]</code> <code>[气声]</code>）完整支持，'
         + '音色库与本站同一套协议。<br>音色 ID 在音色库页面点进某个音色后复制。',
       req: function (c, text, vv) {
@@ -6297,6 +6314,11 @@ textarea{
       voiceHint: '填官方音色名（alloy / ash / coral / nova / onyx / sage / shimmer …），或中转提供的名字',
       note: '走 <code>/v1/audio/speech</code>。音色是固定名字，不是十六进制 ID。'
         + '<br><b>注意：这套协议不认识情绪标记</b> —— 念出来会有点平，适合先试通路。',
+      /* OpenAI 协议这边的型号由各家实现自定（官方 tts-1 / tts-1-hd / gpt-4o-mini-tts，
+         中转另有自己的名字），所以只给提示不给清单。 */
+      modelList: [],
+      modelHint: '这套协议没有统一型号：官方是 <code>tts-1</code> / <code>tts-1-hd</code> / '
+        + '<code>gpt-4o-mini-tts</code>，中转多半另有名字，按那边的说明填。',
       req: function (c, text, vv) {
         var b = { model: c.model || 'tts-1', input: text, response_format: 'mp3', speed: c.speed };
         if (vv) b.voice = vv;
@@ -6321,6 +6343,22 @@ textarea{
       voiceField: 'voice_id',
       voiceHint: '填 voice_id（如 Chinese (Mandarin)_Lyrical_Voice / English_Graceful_Lady），'
         + '不是十六进制',
+      /* 型号清单照官方 OpenAPI 的 model enum 抄（t2a_v2）：
+         speech-2.8 / 2.6 / 02 / 01 各 hd 与 turbo 两档，共八条。
+         官方没有"列出 TTS 型号"的接口，所以这份是静态清单。 */
+      modelList: [
+        { id: 'speech-2.8-turbo', label: 'Speech 2.8 Turbo · 默认，快，支持情绪插词' },
+        { id: 'speech-2.8-hd', label: 'Speech 2.8 HD · 质量更好，支持情绪插词' },
+        { id: 'speech-2.6-turbo', label: 'Speech 2.6 Turbo · 不支持插词，标记会被去掉' },
+        { id: 'speech-2.6-hd', label: 'Speech 2.6 HD · 不支持插词' },
+        { id: 'speech-02-turbo', label: 'Speech 02 Turbo · 不支持插词' },
+        { id: 'speech-02-hd', label: 'Speech 02 HD · 不支持插词' },
+        { id: 'speech-01-turbo', label: 'Speech 01 Turbo · 不支持插词' },
+        { id: 'speech-01-hd', label: 'Speech 01 HD · 不支持插词' }
+      ],
+      modelHint: '官方型号是这八个（<code>speech-2.8-hd / 2.8-turbo</code> 及各自的老版本）。'
+        + '<b>只有 2.8 系列认情绪插词</b>，选老版本时面板会自动把标记去掉。'
+        + '官网没有"列型号"的接口，这份清单照官方文档写死，可以自己改。',
       note: '走 <code>POST /v1/t2a_v2</code>，鉴权只要 <code>Authorization: Bearer &lt;API key&gt;</code>'
         + '（不需要 GroupId）。<br>音色填 voice_id。'
         + '<b>情绪标记只在 speech-2.8-hd / speech-2.8-turbo 上生效</b>：'
@@ -6349,6 +6387,8 @@ textarea{
       voiceHint: '音色 ID',
       note: '自己填字段名与额外请求头去凑。'
         + '<b>只适用于返回音频二进制的接口</b>；返回 JSON 包 base64 的协议当前接不了。',
+      modelList: [],
+      modelHint: '自定义协议没有固定型号清单，按你那边中转给的型号名填。',
       req: function (c, text, vv) {
         var b = {
           text: text, format: c.format, sample_rate: 44100, normalize: true,
@@ -6401,21 +6441,52 @@ textarea{
     }
   }
 
+  /* 模型候选：按当前平台填进 datalist，并更新说明。
+     说清楚一件事 —— 官方没有"列出 TTS 型号"的接口（Fish 的 GET /model 列的是
+     你的音色、MiniMax 的 get_voice 列的是音色），所以这份清单是照官方文档写死的，
+     可编辑；真要拿到适配你账号的型号，只有试听一次才算数。 */
+  function fillModelOptions() {
+    var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
+    var hint = $('#s-model-hint');
+    if (hint) hint.innerHTML = p.modelHint || '按中转支持的模型名填。';
+    var dl = $('#s-model-list');
+    if (dl) {
+      dl.innerHTML = '';
+      (p.modelList || []).forEach(function (m) {
+        var o = document.createElement('option');
+        o.value = m.id; o.label = m.label;
+        dl.appendChild(o);
+      });
+    }
+    // 「推荐」那颗按钮：这个平台没有清单时就收起来，别摆一个点了没用的东西
+    var btn = $('#c-model-refresh');
+    if (btn) btn.style.display = (p.modelList && p.modelList.length) ? '' : 'none';
+  }
+  /* 换平台时，把"上一家的型号"换成新平台的推荐型号。
+     判据是显式的：当前型号为空、或者属于**别的**平台的清单 —— 那样留着它一定发不出去
+     （比如 Fish 的 s2.1-pro-free 发给 MiniMax）。用户自己输的第三方型号名不动。 */
+  function adoptModelForPlatform() {
+    var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
+    var list = p.modelList || [];
+    if (!list.length) return;
+    var cur = String(S.ttsModel || '').trim();
+    var foreign = false;
+    Object.keys(PLATFORMS).forEach(function (k) {
+      if (k === S.ttsPlatform) return;
+      (PLATFORMS[k].modelList || []).forEach(function (m) { if (m.id === cur) foreign = true; });
+    });
+    if (!cur || foreign) {
+      S.ttsModel = list[0].id;
+      var el = $('#s-tts-model'); if (el) el.value = S.ttsModel;
+    }
+  }
+
   function paintPlatform() {
     var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
     var sel = $('#s-platform');
     if (sel && sel.value !== S.ttsPlatform) sel.value = S.ttsPlatform;
     var note = $('#s-plat-note');
     if (note) note.innerHTML = '<b>' + esc4(p.name) + '</b>　' + p.note;
-    /* 平台文档链接常驻显示：跳转按钮可能被沙箱拦，这个是保底入口。
-       顺便把地址本身露在 href 里 —— 手机上长按就能复制。 */
-    var libA = $('#s-plat-lib');
-    if (libA) {
-      var libUrl = p.lib || '';
-      libA.textContent = libUrl ? '打开音色库 / 文档' : '这个平台没有固定的音色库页面';
-      if (libUrl) { libA.setAttribute('href', libUrl); } else { libA.removeAttribute('href'); }
-      libA.style.display = libUrl ? '' : 'none';
-    }
     var n1 = $('#s-voice1-note');
     if (n1) n1.textContent = '被作用的是 TA，出的是呻吟。' + p.voiceHint;
     var i1 = $('#s-voice-1-input');
@@ -6431,12 +6502,13 @@ textarea{
     if (gOai) gOai.style.display = forOpenai ? 'block' : 'none';
     // 地址下拉候选随平台走（选 Fish 时把 Fish 端点排在第一个）
     fillTargetOptions();
+    // 模型候选与说明也随平台走
+    fillModelOptions();
   }
 
   /* 音色库链接：不同平台入口不一样，给个按钮直接过去找，省得"我去哪拿 ID"。
      三级退路 —— window.open 在沙箱 iframe 里会被静默拦下（返回 null 而不是抛错），
-     所以光靠 try/catch 抓不到；退回真实 <a> 点击，再不行就把地址复制到剪贴板、
-     并提示去点界面上那个常驻链接（见 #s-plat-lib）。 */
+     所以光靠 try/catch 抓不到；退回真实 <a> 点击，再不行就把地址复制到剪贴板。 */
   function openLib(which) {
     var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
     var url = p.lib || '';
@@ -6473,6 +6545,8 @@ textarea{
            合成事件（程序触发 change）时 this 未必是这个 select。 */
         var before = isOfficialAddr(S.ttsTarget);   // 判断要在改平台之前做：isOfficial() 认的是"当前平台"
         S.ttsPlatform = sel.value;
+        // 上一家的型号发给新平台一定失败，这里换成新平台的推荐型号
+        adoptModelForPlatform();
         var next = officialKeyOf(S.ttsTarget);
         /* 只有官网 api 那一档、且确实是官方端点时才替用户换地址：
            中转 api 那一档地址是你自己的中转站，替它改掉等于把配置清了。 */
@@ -6500,6 +6574,16 @@ textarea{
     }
     // 地址是选出来的、也是手打的：认得出是哪家官方地址时，平台跟着走
     onEl('#c-open-lib', 'click', function () { openLib(1); });
+    // 「推荐」：一键填当前平台的首选型号（清单里第一条就是官方推荐的那个）
+    onEl('#c-model-refresh', 'click', function () {
+      var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
+      var list = p.modelList || [];
+      if (!list.length) { toast('这个平台没有固定的型号清单，按中转给的说明填'); return; }
+      S.ttsModel = list[0].id;
+      var el = $('#s-tts-model'); if (el) el.value = S.ttsModel;
+      persist();
+      toast('模型：' + list[0].id + '（' + list[0].label + '）', 3200);
+    });
     onEl('#c-lib-1', 'click', function () { openLib(1); });
     onEl('#c-lib-2', 'click', function () { openLib(2); });
   })();
@@ -6937,6 +7021,7 @@ textarea{
 
   function bindVoice() {
     var v = $('#s-voice'); if (v) v.textContent = VOICE_LABEL[S.voice] || '关';
+    fillModelOptions();   // 先把候选与说明铺好，再写值，免得输入框的值被后设置的列表带偏
     var m = $('#s-tts-model'); if (m) m.value = S.ttsModel || '';
     fillVoiceSelect(1);
     fillVoiceSelect(2);
