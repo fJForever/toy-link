@@ -1084,16 +1084,12 @@ textarea{
 
       <div class="chips">
         <button class="chip" id="c-voice-ping">检查通道</button>
-        <button class="chip" id="c-voice-ping3">能不能真的出声</button>
-        <button class="chip" id="c-voice-ping2">对比检查通道</button>
         <button class="chip save" id="c-save-conn">保存</button>
       </div>
       <div class="hint" id="vs-ping-hint">
-        <b>检查通道</b>：只发空文本 / 健康接口，零成本，答的是"网通不通、Key 的格式对不对"。<br>
-        <b>能不能真的出声</b>：真的合成一条极短音频（约 4 字，按官方计费，通常不到一分钱）——
-        只有它答得了"账号额度、模型、音色是不是都能用"。通道通了不等于能出声。
+        <b>检查通道</b>：只发空文本 / 健康接口，零成本 —— 答的是"网通不通"。
+        它<b>答不了"能不能出声"</b>（账号额度、模型、音色是否可用）：那要真合成一次才知道，点试听即可。
       </div>
-      <div class="hint act" id="vs-live-hint">出声检查的反馈显示在这里。</div>
     </section>
 
     <section class="panel">
@@ -1474,7 +1470,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.41';
+  var VERSION = '1.13.42';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -3400,87 +3396,6 @@ textarea{
       clearLog: function () { LOG.length = 0; renderLog(); },
       logText: function () { return LOG.map(function (x) { return '[' + x.t + '] ' + x.m; }).join('\n'); },
       logCount: function () { return LOG.length; },
-      /* 「能不能真的出声」用的探测合成。
-         cfgNow / buildHeaders / buildReqBody 都是这个闭包里的东西，外面够不着，
-         所以这条路必须开在这里：真发一次极短合成（约 4 字），只判成败、不播放、不入缓存。
-         返回 { ok, why } —— ok 为真才代表"账号额度、Key、模型、音色"整套都对。 */
-      speakProbe: function () {
-        if (!S.ttsTarget || !String(S.ttsTarget).trim()) {
-          return Promise.resolve({ ok: false, why: '还没填「合成地址」' });
-        }
-        var c = cfgNow();
-        if (c.via === 'af' && !c.afUrl) {
-          return Promise.resolve({ ok: false, why: '这个官方地址本脚本中转不认，先换回官方端点' });
-        }
-        if (c.authstyle !== 'none' && !c.key) {
-          return Promise.resolve({ ok: false, why: c.via === 'af' ? '还没填官方 API Key' : '还没填令牌' });
-        }
-        var probe = '[气声] 嗯。';
-        vlog('出声检查：真实合成一条 ' + probe + '（会产生计费）', 'hi');
-        vlog('  → ' + c.endpoint, 'step');
-        var t0 = Date.now();
-        var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-        var timer = ctl ? setTimeout(function () { ctl.abort(); }, 30000) : null;
-        return fetch(c.endpoint, {
-          method: 'POST', headers: buildHeaders(c),
-          body: JSON.stringify(buildReqBody(c, speakText(c.plat, probe), S.ttsVoice || '')),
-          signal: ctl ? ctl.signal : undefined,
-          credentials: 'omit', referrerPolicy: 'no-referrer'
-        }).then(function (r) {
-          if (timer) clearTimeout(timer);
-          var ms = Date.now() - t0;
-          if (!r.ok) {
-            return r.text().then(function (tx) {
-              var d = String(tx || '').slice(0, 240);
-              var out;
-              if (r.status === 402 || /credit|balance|quota|insufficient/i.test(d)) {
-                out = '额度不足（HTTP ' + r.status + '）：通道是通的，问题在账号 —— '
-                  + '换成免费档（Fish 的 s2.1-pro-free）或去官方看 API credit。';
-              } else if (r.status === 401 || r.status === 403) {
-                out = '鉴权被拒（' + r.status + '）：检查这个令牌 / 官方 API Key 是不是这一家的。';
-              } else if (r.status === 429) {
-                out = '被限流（429）：等几秒再试，别连着重发。';
-              } else if (r.status === 404) {
-                out = '404：合成地址的路径不对。';
-              } else {
-                out = 'HTTP ' + r.status + '：' + d;
-              }
-              return { ok: false, why: out, credit: r.status === 402 || /credit|balance|quota/i.test(d) };
-            }, function () { return { ok: false, why: 'HTTP ' + r.status + '，读不到响应体' }; });
-          }
-          var isMM = (c.plat === 'minimax') || (PLATFORMS[c.plat] && PLATFORMS[c.plat].resp === 'minimax');
-          if (isMM) {
-            return r.text().then(function (tx) {
-              var j = null; try { j = JSON.parse(tx); } catch (e) { /* 下面统一判 */ }
-              if (!j) return { ok: false, why: '返回的不是 JSON，解析不了' };
-              var br = j.base_resp || {};
-              if (br.status_code !== 0) {
-                var hint = br.status_code === 1004 ? '（鉴权失败：Key 不对）'
-                  : br.status_code === 1002 ? '（限流）'
-                    : br.status_code === 1039 ? '（TPM 限流）'
-                      : br.status_code === 1042 ? '（非法字符过多：文本不干净）'
-                        : br.status_code === 2013 ? '（参数不合法：模型名或音色 ID 不对）' : '';
-                return { ok: false, why: 'MiniMax 业务码 ' + br.status_code + ' ' + br.status_msg + ' ' + hint };
-              }
-              if (!j.data || !j.data.audio) return { ok: false, why: 'MiniMax 回了成功码但没有音频数据' };
-              vlog('出声检查通过：' + ms + 'ms · ' + String(j.data.audio).length + ' 个 hex 字符', 'ok');
-              return { ok: true, ms: ms };            }, function () { return { ok: false, why: '读不到响应体' }; });
-          }
-          return r.arrayBuffer().then(function (buf) {
-            var n = buf ? buf.byteLength : 0;
-            if (!n) return { ok: false, why: '响应里没有音频字节' };
-            vlog('出声检查通过：' + ms + 'ms · ' + Math.round(n / 1024 * 10) / 10 + ' KB 音频', 'ok');
-            return { ok: true, ms: ms, bytes: n };
-          }, function () { return { ok: false, why: '读不到音频数据' }; });
-        }, function (e) {
-          if (timer) clearTimeout(timer);
-          var msg = (e && e.name === 'AbortError') ? '超时（30 秒）' : ((e && e.message) || String(e));
-          if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
-            return { ok: false, why: c.via === 'af' ? '连不上作者中转 —— 先点「检查通道」' : '连不上这个地址：地址写错了，或对方没开跨域' };
-          }
-          return { ok: false, why: msg };
-        });
-      }
     };
   })();
 
@@ -7479,8 +7394,7 @@ textarea{
       if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
         say(af ? '连不上作者中转 —— 检查一下网络，或换成「浏览器直打」再试。'
           : (direct && isOfficial()
-            ? '直连被拦下了（官方端点不给跨域头）—— 用上面的「两种方式都试一次」再看看，'
-              + '或在官网那一档切到「作者的中转服务器」。'
+            ? '直连被拦下了（官方端点不给跨域头）—— 把走法切到「作者的中转服务器」就能跑通。'
             : '连不上这个地址：要么地址写错了，要么对方没开跨域（CORS）。'), 'err');
       } else {
         say('检查失败：' + msg, 'err');
@@ -7490,86 +7404,7 @@ textarea{
   }
   onEl('#c-voice-ping', 'click', voicePing);
 
-  /* 两种方式都试一次：同一份配置换通道各打一次，差别立刻看得出来。
-     官网那一档比的是「浏览器直打 vs 作者的中转服务器」；
-     第三方中转那一档两发打的是同一个地址（只有一条路），用来确认它到底通不通。
-     只探不通，不改用户当前选的传输方式。 */
-  function voicePingBoth() {
-    var keep = S.ttsTransport;
-    var official = isOfficial();
-    var usable = official && afReady();
-    var two = official ? '作者的中转服务器' : '你这台中转';
-    var h = $('#vs-ping-hint');
-    if (h) h.textContent = '先测直连…';
-    VOC.addLog('=== 对比检查：先直连 ===', 'hi');
-    S.ttsTransport = 'direct';
-    voicePing().then(function (dOk) {
-      VOC.addLog('=== 对比检查：再' + (usable ? '经作者中转' : '打一次同一个地址') + ' ===', 'hi');
-      S.ttsTransport = usable ? 'af' : 'direct';
-      voicePing().then(function (rOk) {
-        S.ttsTransport = keep;      // 探完还原，不动用户的选择
-        var msg;
-        if (usable) {
-          msg = (dOk && rOk) ? '两种方式都通 —— 直连更省事，保持直连即可。'
-            : (dOk ? '只有直连通（作者中转那边没通）。'
-              : (rOk ? '只有经作者中转通 —— 直连被跨域拦了。建议切到「作者的中转服务器」。'
-                : '两种都不通：先确认合成地址、官方 API Key 是不是对的。'));
-        } else {
-          msg = dOk
-            ? '直连通了 —— 你这个地址自己开了跨域，直接用浏览器直打就行。'
-            : '直连没通：多半是中转没开跨域。让它带上 CORS 头，或换官网 api ＋ 作者的中转服务器。';
-        }
-        if (h) h.textContent = msg;
-        VOC.addLog('对比结果：直连=' + (dOk ? '通' : '不通') + '，' + two + '=' + (rOk ? '通' : '不通') + '。' + msg, (dOk || rOk) ? 'ok' : 'err');
-        toast(msg, 4000);
-      });
-    });
-  }
-  onEl('#c-voice-ping2', 'click', voicePingBoth);
-
-  /* 「能不能真的出声」：通道通了不等于能出声 —— /tts/health 只证明中转活着，
-     账号额度、Key 权限、模型/音色是否可用它一律答不出来。
-     真正能答的只有"打一次真实合成"，所以这里让 VOC 合成一条极短音频（约 4 字），
-     只判成败、不播放、不进缓存。费用按官方计费规则走，通常不到一分钱。 */
-  function voicePingLive() {
-    // 用它自己的提示行：别和「检查通道」的结果互相盖掉，两条结果能并排看
-    var h = $('#vs-live-hint') || $('#vs-ping-hint');
-    function say(msg, cls) {
-      if (h) h.textContent = msg;
-      VOC.addLog('[出声检查] ' + msg, cls || (/没通过|不足|不对|拦|超时|没填|被拒|限流/.test(msg) ? 'err'
-        : (/通过/.test(msg) ? 'ok' : 'hi')));
-    }
-    if (S.voice === 'off') toast('语音开关是关的，但检查照样能跑');
-    say('正在真实合成一条极短音频来验证…', 'hi');
-    return VOC.speakProbe().then(function (r) {
-      if (r && r.ok) {
-        /* 注意别写成 (r.ms || '?')：耗时可能就是 0ms（尤其本地桩），
-           而 0 是 falsy —— 那会把"0ms"显示成"?"。 */
-        var took = (typeof r.ms === 'number') ? (r.ms + 'ms') : '';
-        say('出声检查通过：拿到了音频（' + took + '）。'
-          + '通道、Key、账号额度、模型、音色这一套都是对的，可以用了。', 'ok');
-        toast('出声检查通过，可以用了', 3200);
-        return true;
-      }
-      var why = (r && r.why) || '未知原因';
-      say('出声检查没通过：' + why, 'err');
-      toast('出声检查没通过：' + why, 6000);
-      return false;
-    });
-  }
-  onEl('#c-voice-ping3', 'click', function () {
-    /* 会真的发一次合成、按官方规则计费 —— 先问一句，别让人误点花了钱。 */
-    var ok = true;
-    try {
-      if (window.confirm) {
-        ok = window.confirm('这一步会真的合成一条极短音频（“[气声] 嗯。”，约 4 字）来验证能不能出声。\n\n'
-          + '费用按官方计费规则走，通常不到一分钱；不会播放、也不会进你的声音缓存。\n\n继续吗？');
-      }
-    } catch (e) { ok = true; }   // 宿主没有 confirm 时不拦，按钮下方的说明里已经写明了
-    if (!ok) { toast('已取消，没有发送任何请求'); return; }
-    voicePingLive();
-  });
-
+  /* 「对比检查通道」「能不能真的出声」两颗按钮已按要求移除；通道检查只留上面那一颗。 */
   onEl('#c-voice-test', 'click', function () {
     if (S.voice === 'off') { toast('先把语音开关打开（至少要 TTS 语音）'); return; }
     VOC.resume();
