@@ -985,30 +985,40 @@ textarea{
 
     <section class="panel">
       <h3>连接</h3>
-      <div class="field">
-        <div class="lb"><b>传输方式</b><small id="s-transport-note"></small></div>
-        <button class="mini" id="s-transport">经本机转发</button>
+      <div class="field col">
+        <div class="lb"><b>连到哪儿</b><small id="s-transport-note"></small></div>
+        <!-- 两个选项：官网直连（打官方端点）/ 中转（打你自己的中转站）。
+             以前只有一个"经本机转发"的按钮在两种传输方式之间切，
+             名字里没提"官方还是中转"，结果让人以为"直连中转"就是官网直连。 -->
+        <div class="gate" id="s-transport" style="margin-top:8px">
+          <button type="button" id="s-tp-official">官网直连</button>
+          <button type="button" id="s-tp-relay">中转</button>
+        </div>
       </div>
       <div class="field col">
-        <div class="lb"><b>合成地址</b><small>中转的完整接口地址，例如 <code>https://你的中转域名/v1/tts</code>。<br>两种传输方式都用它 —— 经转发时由转发脚本打到这儿，直连时面板自己打。</small></div>
-        <input class="txt" id="s-tts-target" type="text" placeholder="https://你的中转域名/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+        <div class="lb"><b id="s-target-lb">合成地址</b><small id="s-target-note"></small></div>
+        <input class="txt" id="s-tts-target" type="text" placeholder="https://api.fish.audio/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
+      </div>
+      <div class="field">
+        <div class="lb"><b>经本机转发</b><small id="s-forward-note">关着＝浏览器直接发请求；打开＝请求交给本机脚本发出去（跑 <code>node 工具-转发.js</code>），不受跨域限制。</small></div>
+        <div class="sw" id="s-tp-forward"><i></i></div>
       </div>
       <div id="s-relay-box">
         <div class="field col">
-          <div class="lb"><b>转发地址</b><small>本机转发脚本的地址。先在命令行跑 <code>node 工具-转发.js</code>。令牌填在脚本那边（<code>relay-key.txt</code>），面板里不存。</small></div>
+          <div class="lb"><b>转发地址</b><small>本机转发脚本的地址。令牌填在脚本那边（<code>relay-key.txt</code>），面板里不存。</small></div>
           <input class="txt" id="s-tts-proxy" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
         </div>
       </div>
       <div id="s-direct-box">
         <div class="field col">
-          <div class="lb"><b>令牌</b><small><b style="color:var(--amber)">直连才需要填。</b>按密码处理：输入时是遮住的，右边可以临时看一眼。它会存在本机（跟着用户存档），新建对话不用重填。</small></div>
+          <div class="lb"><b id="s-key-lb">令牌</b><small id="s-key-note"></small></div>
           <div class="txt-wrap">
-            <input class="txt" id="s-tts-key" type="password" placeholder="中转给你的 API Key" autocomplete="new-password" spellcheck="false" enterkeyhint="done" style="width:100%">
+            <input class="txt" id="s-tts-key" type="password" placeholder="API Key" autocomplete="new-password" spellcheck="false" enterkeyhint="done" style="width:100%">
             <button type="button" class="eye" id="c-eye-key" aria-label="显示或隐藏令牌">显示</button>
           </div>
         </div>
         <div class="field">
-          <div class="lb"><b>鉴权方式</b><small>中转不走标准 Bearer 时改这里。</small></div>
+          <div class="lb"><b>鉴权方式</b><small id="s-auth-note">官方与多数中转都走标准 Bearer，不用改。</small></div>
           <button class="mini" id="s-tts-authstyle">Bearer</button>
         </div>
       </div>
@@ -1087,7 +1097,8 @@ textarea{
         <div class="row2">
           <select class="txt" id="s-platform" style="flex:1;min-width:0">
             <option value="fish">Fish Audio（主推）</option>
-            <option value="minimax">MiniMax 语音</option>
+            <!-- minimax 的接入代码留着（见 PLATFORMS.minimax / parseMinimaxJSON），
+                 但先不放进界面：官方端点是否允许浏览器直连还没实测过，摆出来只会让人踩坑。 -->
             <option value="openai">OpenAI 兼容</option>
             <option value="custom">其他 / 自定义协议</option>
           </select>
@@ -2535,7 +2546,8 @@ textarea{
        relay：经本机转发 —— 留作备份：中转没开跨域时用它绕开浏览器限制 */
     ttsTransport: 'direct',
     ttsKey: '',          // 直连模式才用；经转发时留空，令牌在转发脚本那边
-    ttsTarget: '',       // 中转的合成地址
+    ttsTarget: '',       // 当前要打的完整地址（官网端点或你自己的中转地址）
+    relaySavedTarget: '', // 「官网直连」之前那个中转地址，切回「中转」时还回去
     ttsVoice: '',        // 你拿着遥控器时的音色（被作用的是 TA，出呻吟）
     ttsVoiceTease: '',   // TA 拿着遥控器时的音色（出调教对白）。留空 = 与上面共用同一个
     ttsModel: 's2.1-pro-free',
@@ -6583,34 +6595,87 @@ textarea{
     }
   })();
 
-  /* 传输方式的显示与说明。以前这一段的函数头被误写成了 bindVoice，
-     导致 paintTransport 根本不存在 —— 启动流程第一次调用它就抛
-     "paintTransport is not defined"，整个 boot 中断，window.__TOYLINK__ 永远
-     挂不上去，面板看着在、实际全是死的。函数名务必和下面那个 bindVoice 区分开。 */
+  /* 连接面板的显示与说明。
+     两个按钮选择"连到哪儿"（官网 / 中转），一个下拉里的开关选"走哪条路"（浏览器直打 / 本机转发）。
+     以前只有一个在两种传输方式之间切的按钮，名字里没提官网还是中转，
+     结果让人以为"直连中转"就是官网直连 —— 其实它一直是中转站。
+     函数名务必和下面那个 bindVoice 区分开：这一段的函数头曾被误写成 bindVoice，
+     导致 paintTransport 不存在、boot 第一次调用就抛错，整个面板变成关不掉的死界面。 */
+  var OFFICIAL_URL = { fish: 'https://api.fish.audio/v1/tts' };
+  function isOfficial() {
+    var off = OFFICIAL_URL[S.ttsPlatform] || '';
+    return !!off && String(S.ttsTarget || '').indexOf('api.fish.audio') >= 0;
+  }
+
   function paintTransport() {
     var direct = (S.ttsTransport === 'direct');
-    var b = $('#s-transport');
-    if (b) b.textContent = direct ? '直连中转' : '经本机转发';
+    var official = isOfficial();
+    // 两个按钮的选中态
+    var bo = $('#s-tp-official'), br = $('#s-tp-relay');
+    if (bo) bo.classList.toggle('on', official);
+    if (br) br.classList.toggle('on', !official);
+
+    // 字段标题与说明随"连到哪儿"变
+    var tlb = $('#s-target-lb'), tnt = $('#s-target-note');
+    var klb = $('#s-key-lb'), knt = $('#s-key-note'), ant = $('#s-auth-note');
+    if (official) {
+      if (tlb) tlb.textContent = '官方地址';
+      if (tnt) tnt.innerHTML = '官方 TTS 端点。一般不用改 —— 换平台时这里会自动跟着换。';
+      if (klb) klb.textContent = '官方 API Key';
+      if (knt) knt.innerHTML = '<b style="color:var(--amber)">官方直连会遇到跨域限制。</b>'
+        + '官方端点不带 CORS 头，浏览器会直接拦下（报 Failed to fetch）。'
+        + '想真正跑通，把上面的「经本机转发」打开 —— 请求由本机脚本发出，就没有这个限制。';
+      if (ant) ant.textContent = '官方走标准 Bearer，不用改。';
+    } else {
+      if (tlb) tlb.textContent = '中转地址';
+      if (tnt) tnt.innerHTML = '你自己的中转站完整地址，例如 <code>https://你的中转域名/v1/tts</code>。';
+      if (klb) klb.textContent = '中转令牌';
+      if (knt) knt.innerHTML = '中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
+        + '存在本机（跟着用户存档），新建对话不用重填。';
+      if (ant) ant.textContent = '中转不走标准 Bearer 时改这里。';
+    }
+
     var rb = $('#s-relay-box'); if (rb) rb.style.display = direct ? 'none' : 'block';
     var db = $('#s-direct-box'); if (db) db.style.display = direct ? 'block' : 'none';
+
+    // 「经本机转发」开关的外观
+    var fw = $('#s-tp-forward');
+    if (fw) fw.classList.toggle('on', !direct);
+    var fn = $('#s-forward-note');
+    if (fn) {
+      fn.innerHTML = direct
+        ? '关着＝浏览器直接发请求。官方端点多半会被跨域拦下（报 <code>Failed to fetch</code>）。'
+        : '打开＝请求交给本机脚本发出去（<code>node 工具-转发.js</code>），不受跨域限制。'
+          + '此时令牌放脚本那边，面板这一格可以留空。';
+    }
+
     var note = $('#s-transport-note');
     if (note) {
-      /* relay 那一档只在"直连被跨域拦下"时才需要，所以文案里不把它写成必经步骤 */
-    note.innerHTML = direct
-        ? '<b>直连中转：</b>面板直接打到中转，不需要任何本机脚本。'
-          + '要填两样：合成地址、令牌。'
-          + '<br>如果中转没开跨域（错误里会写 Failed to fetch），再切到「经本机转发」。'
-        : '<b>经本机转发：</b>合成请求先发到本机脚本，再由它打到中转 —— '
-          + '用来绕开"中转没开跨域"的情况。这条路要另跑一个 Node 脚本。';
+      note.innerHTML = official
+        ? (direct
+          ? '<b>官网直连：</b>打 Fish 官方端点。'
+            + '<b style="color:var(--amber)">浏览器通常直连不通</b>（官方不给跨域头），'
+            + '真被拦时错误里会写 <code>Failed to fetch</code> —— 那时把「经本机转发」打开。'
+          : '<b>官网 + 经本机转发：</b>请求由本机脚本发到官方端点，'
+            + '不受浏览器跨域限制，这是官方直连真正能跑通的方式。')
+        : (direct
+          ? '<b>中转：</b>面板直接打到你的中转站，不需要任何本机脚本。'
+            + '要填两样：中转地址、令牌。'
+            + '<br>如果中转没开跨域（错误里会写 <code>Failed to fetch</code>），把「经本机转发」打开。'
+          : '<b>中转 + 经本机转发：</b>请求先发到本机脚本，再由它打到中转 —— '
+            + '用来绕开"中转没开跨域"。这条路要另跑一个 Node 脚本。');
     }
+
     var ab = $('#s-tts-authstyle');
     if (ab) ab.textContent = AUTH_LABEL[S.ttsAuth] || 'Bearer';
+
     var h = $('#vs-ping-hint');
     if (h) {
       var base = direct
         ? '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
-          + '另外直连会被浏览器跨域策略拦下，前提是中转自己开了跨域 ——'
-          + '真被拦时错误里会写 Failed to fetch，那时切「经本机转发」。'
+          + (official
+            ? '而且官方端点不带跨域头，浏览器多半直连不通 —— 被拦时错误里会写 Failed to fetch。'
+            : '直连能否成功取决于你的中转有没有开跨域。')
         : '令牌不进聊天记录：它在转发脚本那边（<code>relay-key.txt</code>）。'
           + '面板里这一格留空也能用。';
       h.innerHTML = base + '<br>检查会先发一句空文本试探通道 —— 不会产生合成费用。';
@@ -7243,17 +7308,40 @@ textarea{
     catch (e) { toast('额外请求头不是合法 JSON，会被忽略', 3200); }
   });
 
-  // 传输方式：两档切换，切了就把该显示的那组字段亮出来
-  onEl('#s-transport', 'click', function () {
+  /* 连到哪儿：官网直连 / 中转。
+     只换"打到哪个地址"，不动用户填的其它东西 —— 中转地址会留着，
+     下次点回「中转」就还在，不用重填。 */
+  onEl('#s-tp-official', 'click', function () {
+    var off = OFFICIAL_URL[S.ttsPlatform];
+    if (!off) { toast('这个平台没有固定官方地址，请用「中转」并自己填地址', 3000); return; }
+    if (isOfficial()) return;                       // 已经是官网，不做无谓的重置
+    S.relaySavedTarget = S.ttsTarget || '';         // 把中转地址记下来，切回来时还回去
+    S.ttsTarget = off;
+    var el = $('#s-tts-target'); if (el) el.value = off;
+    S.ttsTransport = 'direct';                      // 官网默认浏览器直打（会被跨域拦，文案里已说明）
+    paintTransport(); persist();
+    toast('官网直连：已填官方地址。若被跨域拦下，打开「经本机转发」', 3600);
+  });
+  onEl('#s-tp-relay', 'click', function () {
+    if (!isOfficial()) { toast('当前已经是「中转」模式'); return; }
+    // 回到中转：把上次填的中转地址还回去（没有就留空，等用户填）
+    S.ttsTarget = S.relaySavedTarget || '';
+    var el = $('#s-tts-target'); if (el) el.value = S.ttsTarget;
+    paintTransport(); persist();
+    toast(S.ttsTarget ? '已切回「中转」' : '已切回「中转」，填上你的中转地址', 3200);
+  });
+
+  /* 走哪条路：浏览器直打 / 经本机转发。
+     它不影响"连到哪儿"，两条路都能配官网、也都能配中转。 */
+  onEl('#s-tp-forward', 'click', function () {
     S.ttsTransport = (S.ttsTransport === 'direct') ? 'relay' : 'direct';
     paintTransport();
     persist();
-    if (S.ttsTransport === 'direct') {
-      toast('直连中转：要填令牌；若被跨域拦下就切回来');
-    } else {
-      toast('经本机转发：令牌放转发脚本那边');
-    }
+    toast(S.ttsTransport === 'direct'
+      ? '改回浏览器直打（可能被跨域拦下）'
+      : '改走本机转发：请求由 node 工具-转发.js 发出，不受跨域限制', 3200);
   });
+
   // 鉴权方式：四档循环
   onEl('#s-tts-authstyle', 'click', function () {
     var i = AUTH_ORDER.indexOf(S.ttsAuth);
@@ -7532,6 +7620,8 @@ textarea{
     var g = {
       toy_tts_platform: S.ttsPlatform,
       toy_tts_target: S.ttsTarget,
+      // 切到「官网直连」时把原中转地址记下来，切回「中转」要还给用户
+      toy_tts_relay_target: S.relaySavedTarget,
       toy_tts_key: S.ttsKey,
       toy_tts_proxy: S.ttsProxy,
       toy_tts_transport: S.ttsTransport,
@@ -7638,6 +7728,10 @@ textarea{
 
     if (typeof g.toy_tts_platform === 'string' && PLATFORMS[g.toy_tts_platform]) S.ttsPlatform = g.toy_tts_platform;
     if (typeof g.toy_tts_target === 'string') S.ttsTarget = g.toy_tts_target;
+    if (typeof g.toy_tts_relay_target === 'string') S.relaySavedTarget = g.toy_tts_relay_target;
+    /* 老存档里没有 relaySavedTarget：如果当前地址不是官网，就把它当作中转地址记下来 ——
+       否则用户第一次点「官网直连」会把自己填的中转地址弄丢。 */
+    if (!S.relaySavedTarget && S.ttsTarget && !isOfficial()) S.relaySavedTarget = S.ttsTarget;
     if (typeof g.toy_tts_key === 'string') S.ttsKey = g.toy_tts_key;
     if (typeof g.toy_tts_proxy === 'string') S.ttsProxy = g.toy_tts_proxy;
     if (g.toy_tts_transport === 'direct' || g.toy_tts_transport === 'relay') S.ttsTransport = g.toy_tts_transport;
