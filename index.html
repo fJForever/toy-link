@@ -999,6 +999,9 @@ textarea{
            所以放在同一处双向联动 —— 选平台自动填它的官方地址，手改地址则认回平台。 -->
       <div class="field col">
         <div class="lb"><b>合成平台</b><small id="s-plat-note"></small></div>
+        <!-- 平台文档/音色库地址常驻在这里。窗口跳转在沙箱 iframe 里可能被静默拦下，
+             留一个真链接兜底：点不动按钮的，点这里、或长按复制都行。 -->
+        <div class="hint" style="margin-top:2px"><a id="s-plat-lib" href="#" target="_blank" rel="noopener noreferrer">音色库</a></div>
         <div class="row2">
           <select class="txt" id="s-platform" style="flex:1;min-width:0">
             <option value="fish">Fish Audio（主推）</option>
@@ -1461,7 +1464,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.37';
+  var VERSION = '1.13.38';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -6404,6 +6407,15 @@ textarea{
     if (sel && sel.value !== S.ttsPlatform) sel.value = S.ttsPlatform;
     var note = $('#s-plat-note');
     if (note) note.innerHTML = '<b>' + esc4(p.name) + '</b>　' + p.note;
+    /* 平台文档链接常驻显示：跳转按钮可能被沙箱拦，这个是保底入口。
+       顺便把地址本身露在 href 里 —— 手机上长按就能复制。 */
+    var libA = $('#s-plat-lib');
+    if (libA) {
+      var libUrl = p.lib || '';
+      libA.textContent = libUrl ? '打开音色库 / 文档' : '这个平台没有固定的音色库页面';
+      if (libUrl) { libA.setAttribute('href', libUrl); } else { libA.removeAttribute('href'); }
+      libA.style.display = libUrl ? '' : 'none';
+    }
     var n1 = $('#s-voice1-note');
     if (n1) n1.textContent = '被作用的是 TA，出的是呻吟。' + p.voiceHint;
     var i1 = $('#s-voice-1-input');
@@ -6421,7 +6433,10 @@ textarea{
     fillTargetOptions();
   }
 
-  /* 音色库链接：不同平台入口不一样，给个按钮直接过去找，省得"我去哪拿 ID" */
+  /* 音色库链接：不同平台入口不一样，给个按钮直接过去找，省得"我去哪拿 ID"。
+     三级退路 —— window.open 在沙箱 iframe 里会被静默拦下（返回 null 而不是抛错），
+     所以光靠 try/catch 抓不到；退回真实 <a> 点击，再不行就把地址复制到剪贴板、
+     并提示去点界面上那个常驻链接（见 #s-plat-lib）。 */
   function openLib(which) {
     var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
     var url = p.lib || '';
@@ -6429,8 +6444,25 @@ textarea{
     var slot = (which === 2) ? 'TA 拿着遥控器时' : '你拿着遥控器时';
     VOC.addLog('打开音色库（' + p.name + '）→ ' + url, 'hi');
     toast('去音色库找 ID，找到填到「' + slot + '的音色」里', 3600);
-    try { window.open(url, '_blank', 'noopener'); }
-    catch (e) { toast('没能打开新窗口，地址：' + url, 4000); }
+    /* ① 常规跳转。被拦时返回 null（不抛错），所以必须查返回值 */
+    try { if (window.open(url, '_blank', 'noopener')) return; } catch (e) { /* 落到下一级 */ }
+    /* ② 造一个真实的 <a> 点它：这条路绕开 window.open 的弹窗判定 */
+    try {
+      var a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.style.display = 'none';
+      (WIN.document.body || DOC.body).appendChild(a);
+      a.click();
+      setTimeout(function () { try { a.remove(); } catch (e) { /* noop */ } }, 1200);
+      return;
+    } catch (e2) { /* 落到下一级 */ }
+    /* ③ 复制地址并指路：至少让用户能自己粘到浏览器里 */
+    var done = function () { toast('跳转被拦下了。地址已复制：' + url, 5600); };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, function () { fallbackCopy(url, done); });
+      } else fallbackCopy(url, done);
+    } catch (e3) { toast('跳转被拦下了，请手动打开：' + url, 6000); }
   }
 
   (function bindPlatform() {
