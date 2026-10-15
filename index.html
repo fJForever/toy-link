@@ -1000,12 +1000,12 @@ textarea{
         <input class="txt" id="s-tts-target" type="text" placeholder="https://api.fish.audio/v1/tts" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
       </div>
       <div class="field">
-        <div class="lb"><b id="s-forward-lb">走法</b><small id="s-forward-note"></small></div>
+        <div class="lb"><b id="s-forward-lb">请求怎么发</b><small id="s-forward-note"></small></div>
         <button class="mini" id="s-tp-forward">浏览器直打</button>
       </div>
       <div id="s-relay-box">
         <div class="field col">
-          <div class="lb"><b>转发脚本地址</b><small>本机转发脚本的地址。跑 <code>node 工具-转发.js</code>，它打印出来的就是这个。两种模式共用它，不用分开填。</small></div>
+          <div class="lb"><b>转发脚本地址</b><small>只有「中转 + 经本机转发」这一档用它：你自己跑 <code>node 工具-转发.js</code>，打印出来的地址就填这儿。<br>官网那一档走作者的中转服务器，不用跑脚本，所以这一格会收起来。</small></div>
           <input class="txt" id="s-tts-proxy" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done" style="width:100%">
         </div>
       </div>
@@ -1097,6 +1097,7 @@ textarea{
         <div class="row2">
           <select class="txt" id="s-platform" style="flex:1;min-width:0">
             <option value="fish">Fish Audio（主推）</option>
+            <option value="minimax">MiniMax 语音</option>
             <option value="openai">OpenAI 兼容</option>
             <option value="custom">其他 / 自定义协议</option>
           </select>
@@ -1460,7 +1461,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.33';
+  var VERSION = '1.13.35';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2930,7 +2931,12 @@ textarea{
      * 两条路的请求体完全一样，差别只在打到哪、谁来带鉴权头。 ---- */
     function buildHeaders(c) {
       var h = { 'Content-Type': 'application/json' };
-      if (c.transport === 'direct') {
+      /* via='af' 是经作者的中转服务器：它转发的是"一份正常的官方请求"，
+         所以走官方的鉴权头与请求体，不带 x-toylink-* 那套旧的本机脚本协议头
+         （服务器根本不认那些头，带上等于多送一份没人看的元数据）。
+         只有 via='local'（本机脚本）才走旧协议。 */
+      var viaLocal = (c.transport !== 'direct' && c.via !== 'af');
+      if (!viaLocal) {
         if (c.authstyle === 'x-api-key' && c.key) h['x-api-key'] = c.key;
         else if (c.authstyle === 'raw' && c.key) h['Authorization'] = c.key;
         else if (c.authstyle !== 'none' && c.key) h['Authorization'] = 'Bearer ' + c.key;
@@ -2948,9 +2954,9 @@ textarea{
            填 key 的地方，只能去改 relay-key.txt。 */
         if (c.authstyle !== 'none' && c.key) h['x-toylink-key'] = c.key;
       }
-      // 额外请求头：直连时直接合并；经转发时整块交给脚本合并
+      // 额外请求头：直连与作者中转都直接合并（后者会转发白名单内的头）；本机转发整块交给脚本
       if (c.extraRaw) {
-        if (c.transport === 'direct') {
+        if (!viaLocal) {
           try {
             var ex = JSON.parse(c.extraRaw) || {};
             Object.keys(ex).forEach(function (k) { h[k] = String(ex[k]); });
@@ -2964,10 +2970,24 @@ textarea{
 
     function cfgNow() {
       var p = PLATFORMS[S.ttsPlatform] || PLATFORMS.fish;
+      var direct = (S.ttsTransport === 'direct');
+      /* endpoint 是"这一发到底打到哪个地址"，一次算清楚，后面 requestHeaders、
+         日志、报错文案全用它，免得各处各判一次判出不一致。
+           浏览器直打      → 用户填的地址（官方或自有中转）
+           经作者中转      → 作者的中转服务器（由官方地址固定映射出来）
+           经本机脚本      → 本机转发脚本，由它打用户填的地址 */
+      var af = (!direct && usingAF()) ? afURL(S.ttsTarget) : '';
+      var toLocal = (!direct && !usingAF());
       return {
         transport: S.ttsTransport || 'relay',
         target: S.ttsTarget || '',
-        endpoint: (S.ttsTransport === 'direct') ? (S.ttsTarget || '') : (S.ttsProxy || ''),
+        /* via 标出这一发实际走哪条通道，用于日志与请求头构造：
+           'direct'＝浏览器直打 ｜ 'af'＝经作者中转 ｜ 'local'＝经本机脚本转发 */
+        via: direct ? 'direct' : (toLocal ? 'local' : 'af'),
+        /* afUrl 留一份原始映射：转发地址是空的说明这条路没走通，要单独报错 */
+        afUrl: af,
+        afHealth: afHealth(),
+        endpoint: direct ? (S.ttsTarget || '') : (toLocal ? (S.ttsProxy || '') : (af || '')),
         key: S.ttsKey || '',
         authstyle: S.ttsAuth || 'bearer',
         model: S.ttsModel || '',
@@ -2975,7 +2995,10 @@ textarea{
         /* 音色字段名与音色字段是否发 model，都随平台走：
            Fish 用 reference_id + model 头；OpenAI 用 voice 字段、不要 model 头。 */
         voiceField: (S.ttsPlatform === 'custom') ? (S.ttsRefField || 'reference_id') : p.voiceField,
-        noModelHdr: (S.ttsPlatform === 'openai') ? true : !!S.ttsNoModelHdr,
+        /* 平台级别"不发 model 头"：OpenAI 协议里模型在 body 里；MiniMax 也是 ——
+           官方只要 Authorization + Content-Type，多一个 model 头只会给网关添判断余地。
+           作者中转那条路也一样不带（它转发的是同一份官方请求）。 */
+        noModelHdr: (S.ttsPlatform === 'openai' || S.ttsPlatform === 'minimax') ? true : !!S.ttsNoModelHdr,
         extraRaw: S.ttsExtraHdrs || '',
         latency: S.ttsLatency || 'low',
         format: S.ttsFormat || 'mp3',
@@ -3066,11 +3089,17 @@ textarea{
     function miniMarks(s) {
       var mdl = String(S.ttsModel || '');
       if (mdl.indexOf('2.8') < 0) return stripMarks(s);   // 老模型不认插词，全删
-      return String(s == null ? '' : s).replace(/\[([^\]]+)\]/g, function (_, inner) {
+      var out = String(s == null ? '' : s).replace(/\[([^\]]+)\]/g, function (_, inner) {
         var key = String(inner).trim();
         var hit = MM_FX[key] || MM_FX[key.toLowerCase()];
         return hit ? '（' + hit + '）' : ' ';
       });
+      /* 标记原来占着位置，替换掉之后会留下空档 —— 行首最明显。
+         还有一处：台词库里标记与正文之间本来有一个空格（"[breath] 不行……"），
+         换成全角插词后那个空格吊在「）」后面，念出来是多一次停顿。 */
+      return out
+        .replace(/）[ \t\u3000]+/g, '）')
+        .replace(/^[ \t\u3000]+/, '').replace(/[ \t\u3000]{2,}/g, ' ').trim();
     }
 
     /* 一份台词送去合成前的清洗：去掉方括号标记（MiniMax 换成括号插词），多行并成一句 */
@@ -3086,7 +3115,18 @@ textarea{
       var c = cfgNow();
       if (!c.target) { vlog('没填合成地址', 'err'); return Promise.reject(new Error('没填合成地址')); }
       if (c.transport === 'direct' && !c.endpoint) { vlog('直连模式缺合成地址', 'err'); return Promise.reject(new Error('直连时合成地址就是合成地址，先填上')); }
-      if (c.transport !== 'direct' && !c.endpoint) { vlog('没填转发地址', 'err'); return Promise.reject(new Error('没填转发地址')); }
+      /* 经作者中转时，转发地址不是"用户填的"而是从官方地址映射出来的 ——
+         映射不出来说明这条路走不通，得说清楚是地址不认，别让人去翻转发地址那一格
+         （那一格在官网模式下已经收起来了）。 */
+      if (c.via === 'af' && !c.afUrl) {
+        vlog('作者中转不认这个官方地址：' + c.target, 'err');
+        return Promise.reject(new Error('作者中转只转发 Fish 与 MiniMax 国际站的官方端点，当前地址不在其中'));
+      }
+      if (c.transport !== 'direct' && c.via !== 'af' && !c.endpoint) { vlog('没填转发地址', 'err'); return Promise.reject(new Error('没填转发地址')); }
+      if (c.authstyle !== 'none' && !c.key && c.via === 'af') {
+        vlog('经作者中转需要填官方 API Key', 'err');
+        return Promise.reject(new Error('经作者中转要用你自己的官方 API Key，先填「官方 API Key」'));
+      }
       if (c.transport === 'direct' && c.authstyle !== 'none' && !c.key) {
         vlog('直连模式没填令牌', 'err');
         return Promise.reject(new Error('直连模式要填令牌（或把鉴权改成「不带」）'));
@@ -3099,7 +3139,8 @@ textarea{
       var k = vkey(text, vv);
       var t0 = Date.now();
       vlog('请求 ' + String(text).slice(0, 34) + ' · ' + nBytes(speak) + ' 字节 · '
-        + (c.transport === 'direct' ? '直连' : '经转发') + (vv ? ' · 音色 ' + vv : ' · 默认音色'), 'hi');
+        + (c.via === 'af' ? '经作者中转' : (c.transport === 'direct' ? '直连' : '经转发'))
+        + (vv ? ' · 音色 ' + vv : ' · 默认音色'), 'hi');
       return cached(k).then(function (hit) {
         if (hit && hit.blob) {
           vlog('缓存命中 ' + k + '（' + fmtKB(hit.blob.size) + '），未联网', 'ok');
@@ -3121,7 +3162,7 @@ textarea{
         var hdrNames = Object.keys(h).filter(function (k) {
           return k !== 'Authorization' && k !== 'x-api-key';
         }).join(', ');
-        vlog('  → ' + c.transport.toUpperCase() + ' ' + url, 'step');
+        vlog('  → ' + (c.via === 'af' ? 'AF' : c.transport.toUpperCase()) + ' ' + url, 'step');
         vlog('  → 鉴权头：' + authHdr + ' ｜ 其余头：' + (hdrNames || '无'), 'step');
         vlog('  → 请求体字段：' + Object.keys(body).join(', ') + '（' + nBytes(JSON.stringify(body)) + ' 字节）', 'step');
         var lines = String(text || '').split(/[\r\n]+/).filter(function (x) { return x.trim(); });
@@ -3129,22 +3170,30 @@ textarea{
 
         return fetch(url, {
           method: 'POST', headers: h, body: JSON.stringify(body),
-          signal: ctl ? ctl.signal : undefined
+          signal: ctl ? ctl.signal : undefined,
+          /* 不带酒馆的 Cookie，也不带网页地址：中转与官方都不需要这两样，
+             送过去只是白送一份身份线索。作者中转那边同样不需要凭据型请求。 */
+          credentials: 'omit', referrerPolicy: 'no-referrer'
         }).then(function (r) {
           if (timer) clearTimeout(timer);
           var ms = Date.now() - t0;
+          /* 报错时把"这一发是谁回的"说准：直连是官方/自有中转直接回的，
+             经作者中转是中转回的（真正的上游错误它也会透传下来），本机转发是脚本回的。
+             以前只有"上游 / 转发"两种，经本机转发那种情况会被误写成"上游"。 */
+          var who = (c.via === 'af') ? '作者中转' : (c.transport === 'direct' ? '上游' : '本机转发');
           if (!r.ok) {
             return r.text().then(function (tx) {
               var detail = String(tx || '').slice(0, 200);
-              vlog((c.transport === 'direct' ? '上游' : '转发') + ' 回 ' + r.status + '（' + ms + 'ms）'
+              vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）'
                 + (r.status === 401 || r.status === 403 ? ' ← 鉴权失败，检查令牌与鉴权方式'
                   : r.status === 404 ? ' ← 路径不对，检查合成地址'
-                    : r.status === 429 ? ' ← 触发限流（并发/配额）' : '')
+                    : r.status === 413 ? ' ← 请求体太大'
+                      : r.status === 429 ? ' ← 触发限流（并发/配额），等几秒再试，不要连着重发' : '')
                 + (detail ? ' · ' + detail : ''), 'err');
-              throw new Error((c.transport === 'direct' ? '上游' : '转发') + '返回 ' + r.status + '：' + detail);
+              throw new Error(who + '返回 ' + r.status + '：' + detail);
             }, function () {
-              vlog((c.transport === 'direct' ? '上游' : '转发') + ' 回 ' + r.status + '（' + ms + 'ms）', 'err');
-              throw new Error((c.transport === 'direct' ? '上游' : '转发') + '返回 ' + r.status);
+              vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）', 'err');
+              throw new Error(who + '返回 ' + r.status);
             });
           }
           var ct = r.headers.get('content-type') || '';
@@ -3346,6 +3395,15 @@ textarea{
       logCount: function () { return LOG.length; }
     };
   })();
+
+  /* 面板里的运行日志挂一份到 window：手机上没有控制台，排语音问题时
+     在酒馆的控制台里敲 __TOYLINK__.logText() 就能把现场整份捞出来。 */
+  try {
+    WIN.__toylink_log = {
+      logText: function () { return VOC.logText(); },
+      logCount: function () { return VOC.logCount(); }
+    };
+  } catch (e) { /* noop */ }
 
   function guessMime(f) {
     if (f === 'wav') return 'audio/wav';
@@ -5416,7 +5474,8 @@ textarea{
       if (VOC.buzzMode() && S.on) VOC.tick(S.env);
       if (!VOC.voiceOn()) { toast('语音开关还没开（要在 TTS 语音或两个都要）'); return; }
       if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
-      if (S.ttsTransport === 'direct' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('直连模式还要填令牌'); return; }
+      // 经作者中转也要 Key（它用的是你自己的官方 Key），只有本机脚本那档才可以留空
+      if (S.ttsTransport !== 'relay' && S.ttsAuth !== 'none' && !S.ttsKey) { toast('这一档要填令牌 / 官方 API Key'); return; }
       /* 多行时逐行补标记 —— 用户可能只给第一行写了标记，其余行空着；
          每行各自带标记，念出来的语气才会跟着走。 */
       var ck = voiceKind();
@@ -6134,17 +6193,21 @@ textarea{
     if (btn) btn.textContent = VOICE_LABEL[S.voice] || '关';
 
     // 配置齐了没有 —— 一个地方算清楚，三处文案都用它，免得各说各话。
-    // 直连还要看令牌：没令牌时 FETCH 会直接失败，不如提前说清。
+    // 令牌按通道算：只有经本机脚本那档可以留空（key 在脚本那边），其余两档都要。
     var needTts = (S.voice === 'tts' || S.voice === 'both');
-    var direct = (S.ttsTransport === 'direct');
+    var toLocal = (S.ttsTransport === 'relay');
+    var isAF = usingAF();
     var missing = [];
     if (needTts) {
       if (!S.ttsTarget) missing.push('合成地址');
-      if (!direct && !S.ttsProxy) missing.push('转发地址');
-      if (direct && S.ttsAuth !== 'none' && !S.ttsKey) missing.push('令牌');
+      if (toLocal && !S.ttsProxy) missing.push('转发地址');
+      if (isAF && !afURL(S.ttsTarget)) missing.push('（这个官方地址作者中转不认）');
+      if (!toLocal && S.ttsAuth !== 'none' && !S.ttsKey) missing.push(isAF ? '官方 API Key' : '令牌');
     }
     var ready = missing.length === 0;
     var missText = missing.join('、');
+    // 通道名：文案里要说清"还差的那几项是为哪条路要的"
+    var chanName = isAF ? '经作者中转' : (toLocal ? '经本机转发' : '浏览器直打');
 
     var tag = $('#voice-tag');
     if (tag) {
@@ -6164,10 +6227,11 @@ textarea{
         + (VOICE_NOTE[S.voice] || '')
         + (needTts && !ready
           ? '<br><b style="color:var(--amber)">还差：' + esc4(missText) + '（'
-            + (direct ? '直连' : '经本机转发') + '）—— 都在下面的「连接」里填。</b>'
+            + chanName + '）—— 都在下面的「连接」里填。</b>'
           : '')
-        + (needTts && ready && direct
-          ? '<br><b style="color:var(--amber)">直连模式：令牌随聊天变量存档，注意环境。</b>'
+        + (needTts && ready && !toLocal
+          ? '<br><b style="color:var(--amber)">' + chanName
+            + '：令牌随聊天变量存档，注意环境。</b>'
           : '');
     }
     var note = $('#s-voiceai-note');
@@ -6271,8 +6335,8 @@ textarea{
        ② 情绪/喘息的写法是**全角括号**（气声）（pant），不是 [方括号]。
           官方还只在 speech-2.8 系列上支持这类插词，其余模型会把它当正文念出来，
           所以标记转不转要跟着模型名走。
-       注意：界面下拉里暂时没放出这一项（见平台选择框里的注释）——
-       官方端点是否允许浏览器直连还没实测，先留着代码不暴露入口。 */
+       国际版端点 api.minimax.io、国内版 api.minimaxi.com —— OFFICIAL_URL 里默认给的是国际版，
+       国内账号把「合成地址」改成 api.minimaxi.com 那一条即可。 */
     minimax: {
       name: 'MiniMax 语音',
       lib: 'https://platform.minimax.io/',
@@ -6628,14 +6692,61 @@ textarea{
      两个按钮选择"连到哪儿"（官网 / 中转），一个开关选"走哪条路"（浏览器直打 / 本机转发）。
      以前只有一个在两种传输方式之间切的按钮，名字里没提官网还是中转，
      结果让人以为"直连中转"就是官网直连 —— 其实它一直是中转站。 */
-  var OFFICIAL_URL = { fish: 'https://api.fish.audio/v1/tts' };
+  var OFFICIAL_URL = {
+    fish: 'https://api.fish.audio/v1/tts',
+    minimax: 'https://api.minimax.io/v1/t2a_v2'
+  };
+  // 认官网不能只认 fish 那一个域名；MiniMax 国际版/国内版是两个域名，都算官网
+  var OFFICIAL_HOST = {
+    fish: ['api.fish.audio'],
+    minimax: ['api.minimax.io', 'api.minimaxi.com']
+  };
   function isOfficial() {
-    var off = OFFICIAL_URL[S.ttsPlatform] || '';
-    return !!off && String(S.ttsTarget || '').indexOf('api.fish.audio') >= 0;
+    var off = OFFICIAL_URL[S.ttsPlatform];
+    if (!off) return false;
+    var t = String(S.ttsTarget || '');
+    var hosts = OFFICIAL_HOST[S.ttsPlatform] || [];
+    for (var i = 0; i < hosts.length; i++) if (t.indexOf(hosts[i]) >= 0) return true;
+    return false;
   }
 
+  /* =========================================================
+   * 经作者的中转服务器转发
+   *
+   * 「经本机转发」原来是靠本机跑一个 node 脚本（工具-转发.js）绕开跨域。
+   * 手机用户跑不了那个脚本，所以现在改成作者自己的中转服务器：
+   * 公网 HTTPS，浏览器直接打得到，打开跨域，两端都是你自己填的官网 Key。
+   *
+   * 它只认两个固定的官方端点（服务器按路径白名单转发，不是任意网址代理），
+   * 所以能不能走这条路，看的是"当前官方地址是不是它认识的那两个"——
+   * 不是看平台名。MiniMax 国内站 api.minimaxi.com 服务器连不上，这里也不给它映射。
+   * ======================================================= */
+  var AF = 'https://rp-tavern-fj.koreacentral.cloudapp.azure.com/tts';
+  var AF_URL = {
+    'https://api.fish.audio/v1/tts': AF + '/fish/v1/tts',
+    'https://api.minimax.io/v1/t2a_v2': AF + '/mm/v1/t2a_v2'
+  };
+  /* 官方地址 → 中转地址。认不出就返回空串（调用方据此提示走别的通道）。
+     比对整条地址而不只是域名 —— 免得用户把地址改成别的路径时被误判成"还能中转"。 */
+  function afURL(official) {
+    var t = String(official || '').replace(/\/+$/, '');
+    return AF_URL[t] || '';
+  }
+  // 现在这一格填的官方地址，是不是作者中转认识的那两个之一
+  function afReady() { return !!afURL(S.ttsTarget); }
+  /* 这一档是不是真的在走作者中转。
+     注意 S.ttsTransport 用的是显式三态，不是"非 direct 就是转发"：
+       'direct' 浏览器直打 ｜ 'af' 经作者中转 ｜ 'relay' 经本机脚本
+     老配置里已经是 'relay' 的人（以前官网那档就是本机转发），升级后不会
+     被悄悄改道送到别人的服务器上 —— 通道只能由用户点出来（见 #s-tp-forward）。 */
+  function usingAF() { return S.ttsTransport === 'af'; }
+  // 是不是"经某种转发"（作者中转或本机脚本都算）
+  function forwarding() { return S.ttsTransport === 'af' || S.ttsTransport === 'relay'; }
+  // 健康检查地址：中转根下的 /tts/health，不带 Key、不带文本，不产生合成费用
+  function afHealth() { return AF + '/health'; }
+
   function paintTransport() {
-    var direct = (S.ttsTransport === 'direct');
+    var direct = !forwarding();
     var official = isOfficial();
     // 两个按钮的选中态
     var bo = $('#s-tp-official'), br = $('#s-tp-relay');
@@ -6657,52 +6768,82 @@ textarea{
       if (ant) ant.textContent = '中转不走标准 Bearer 时改这里。';
     }
 
-    var rb = $('#s-relay-box'); if (rb) rb.style.display = direct ? 'none' : 'block';
-    // 令牌框**始终显示**：不管走直打还是经本机转发，用户都要有地方填 key。
-    // 以前转发模式把它整块藏了，用户只能去改 relay-key.txt —— 那是给排错准备的兜底，
-    // 不该是唯一的入口。
-    var db = $('#s-direct-box'); if (db) db.style.display = 'block';
+    /* 走法：浏览器直打 / 经作者的中转服务器转发。
+       官网这一档走作者的公网中转（浏览器直接打得到，不用本机跑脚本）；
+       自有中转那一档照旧走本机脚本 —— 你自己的中转没开跨域时它还派得上用场。 */
+    var af = usingAF();                             // 真的在走作者中转
+    var toLocal = (S.ttsTransport === 'relay');     // 走本机脚本那一档
+    var afFree = afReady() || !official;            // 作者中转这条通道能不能用
 
-    // 令牌说明：按"官网/中转"×"直打/转发"四种组合给对应的话
+    // 令牌说明：按实际通道给对应的话（作者中转要 Key；本机脚本那档才允许留空）
     if (knt) {
-      if (!direct) {
+      if (toLocal) {
         knt.innerHTML = '填了就用这个 key（转发脚本会优先用它）；<b>留空也没关系</b> —— '
           + '那时用脚本目录里的 <code>relay-key.txt</code>。';
+      } else if (af) {
+        knt.innerHTML = '经作者中转时<b>必须填</b>：中转只转发，不带任何 Key，'
+          + '官方那边认的就是你自己的这一把。存在本机（跟着用户存档），新建对话不用重填。';
       } else if (official) {
         knt.innerHTML = '<b style="color:var(--amber)">官方直连会遇到跨域限制。</b>'
           + '官方端点不带 CORS 头，浏览器会直接拦下（报 Failed to fetch）。'
-          + '想真正跑通，把上面的「经本机转发」打开 —— 请求由本机脚本发出，就没有这个限制。';
+          + '想真正跑通，把上面的走法切到「经本作者中转服务器转发」—— 请求经作者的中转服务器发出，'
+          + '不用在本机跑脚本。';
       } else {
         knt.innerHTML = '中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
           + '存在本机（跟着用户存档），新建对话不用重填。'
           + '<b style="color:var(--amber)">直打会被存进浏览器本地</b>，介意的话打开「经本机转发」。';
       }
     }
-
-    // 走法：浏览器直打 / 经本机转发（两种模式共用同一个转发脚本）
     var fw = $('#s-tp-forward');
     if (fw) {
       fw.classList.toggle('on', !direct);
-      fw.textContent = direct ? '浏览器直打' : '经本机转发';
+      fw.textContent = direct ? '浏览器直打' : (af ? '经本作者中转服务器转发' : '经本机转发');
     }
     var fn = $('#s-forward-note');
     if (fn) {
-      fn.innerHTML = official
-        ? (direct
-          ? '<b style="color:var(--amber)">浏览器直打官方端点通常会被拦</b>（官方不给跨域头，'
-            + '报 <code>Failed to fetch</code>）。点右边这颗切到「经本机转发」才能真正跑通。'
-          : '请求由本机脚本发给官方端点，<b>不受浏览器跨域限制</b> —— 这是官网直连真正能跑通的方式。')
-        : (direct
-          ? '浏览器直接打你的中转站。通不通取决于<b>你的中转有没有开跨域</b>。'
-          : '请求先交给本机脚本，再由它打你的中转站 —— 用来绕开"中转没开跨域"。');
+      /* 分支要看"现在真的在走哪条路"（af / toLocal），不能只看"这条路能不能走"（afFree）：
+         老配置里 transport 还是 relay＋官方地址，那是历史遗留的"经本机转发"，
+         不该被说成正在走作者中转 —— 那正是"不静默改道"要守住的地方。 */
+      if (af) {
+        fn.innerHTML = '请求经<b>作者的中转服务器</b>转发到官方端点，两端都是 HTTPS，'
+          + '用的是你自己填的官方 API Key —— 不需要本机跑脚本。<br>'
+          + '它是给少量人共用的公开中转：<b>可能限流</b>（忙时返回 429，等几秒再试），'
+          + '请求过程里<b>对方服务器必然接触得到你的 Key 与台词</b>（不持久化，但技术上看得见）。'
+          + '介意就切回浏览器直打、或去「中转」填你自己的中转地址。';
+      } else if (toLocal) {
+        fn.innerHTML = official
+          ? '你是本机的转发脚本在打官方端点（旧配置）。不改也没问题；<br>'
+            + '想省掉本机脚本，点这颗切到「经本作者中转服务器转发」，手机上也能用。'
+          : '请求先交给本机脚本（<code>node 工具-转发.js</code>），再由它打你的中转站 —— '
+            + '用来绕开"你的中转没开跨域"。';
+      } else if (official && afFree) {
+        fn.innerHTML = '<b style="color:var(--amber)">浏览器直打官方端点会被拦</b>（官方不给跨域头，'
+          + '报 <code>Failed to fetch</code>）。点这颗切到「经本作者中转服务器转发」就能跑通，'
+          + '不用在本机跑任何脚本，手机上也能用。';
+      } else if (official) {
+        fn.innerHTML = '<b style="color:var(--amber)">这个官方地址作者中转不认</b> —— '
+          + '它只固定转发 Fish 官方 <code>api.fish.audio/v1/tts</code> 与 MiniMax 国际站 '
+          + '<code>api.minimax.io/v1/t2a_v2</code> 两条（不是任意网址代理）。<br>'
+          + 'MiniMax 国内站（<code>api.minimaxi.com</code>）、别的第三方或自建中转都走不了这条路。'
+          + '要么把「合成地址」改回官方端点，要么切到上面的「中转」填你自己的中转地址。';
+      } else {
+        fn.innerHTML = '浏览器直接打你的中转站。通不通取决于<b>你的中转有没有开跨域</b>。';
+      }
     }
+    /* 转发脚本地址这一格只对"经本机脚本"那一档有意义。
+       官网那档换了作者的中转服务器之后，它是多余的 —— 留着会让人以为要自己填。 */
+    var px = $('#s-tts-proxy'), pxBox = $('#s-relay-box');
+    var pxNeeded = toLocal;
+    if (pxBox) pxBox.style.display = pxNeeded ? 'block' : 'none';
+    if (px && pxNeeded && !px.value) px.value = S.ttsProxy || 'http://127.0.0.1:8799/v1/tts';
+    if (px && px.tagName === 'INPUT') px.disabled = !pxNeeded;
 
     var note = $('#s-transport-note');
     if (note) {
       note.innerHTML = official
-        ? '<b>官网直连：</b>打 Fish 官方端点 <code>api.fish.audio</code>，用你自己的官方 API Key。<br>'
-          + '注意：官方的浏览器直连一定失败（没有跨域头），要么走「经本机转发」，'
-          + '要么去给官方提需求。'
+        ? '<b>官网直连：</b>地址是官方端点，Key 用你自己的官方 API Key。<br>'
+          + '官方不给跨域头，所以浏览器直打会被拦 —— 要真正跑通，把下面的走法切到'
+          + '<b>「经本作者中转服务器转发」</b>。'
         : '<b>中转：</b>打你自己填的中转地址，用那个中转给你的令牌。<br>'
           + '这条路不需要官方开放跨域，中转自己开了就行。';
     }
@@ -6712,13 +6853,21 @@ textarea{
 
     var h = $('#vs-ping-hint');
     if (h) {
-      var base = direct
-        ? '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
-          + '另外直连会被浏览器跨域策略拦下，前提是中转自己开了跨域 ——'
-          + '真被拦时错误里会写 Failed to fetch，那时切「经本机转发」。'
-        : '令牌不进聊天记录：它在转发脚本那边（<code>relay-key.txt</code>）。'
+      var base;
+      if (official && !direct) {
+        base = afFree
+          ? '走作者中转时，<b>检查</b>只打一次 <code>/tts/health</code>（不带 Key、不带文本），'
+            + '它只说明中转活着，不等于你的 Key、模型、音色可用 —— 真要确认还得点「试听一句」。'
+          : '当前这个官方地址作者中转不认，检查会照直打做，多半会被跨域拦下。';
+      } else if (direct) {
+        base = '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
+          + '另外直连会被浏览器跨域策略拦下 —— 官方的端点一定拦，'
+          + '自有中转那边看它自己有没有开跨域（被拦时错误里写 Failed to fetch）。';
+      } else {
+        base = '令牌不进聊天记录：它在转发脚本那边（<code>relay-key.txt</code>）。'
           + '面板里这一格留空也能用。';
-      h.innerHTML = base + '<br>检查会先发一句空文本试探通道 —— 不会产生合成费用。';
+      }
+      h.innerHTML = base + '<br>检查不会真的合成音频，不产生合成费用。';
     }
   }
 
@@ -6971,46 +7120,83 @@ textarea{
         : (/过了|通了|可以试听/.test(msg) ? 'ok' : 'hi')));
     }
     var direct = (S.ttsTransport === 'direct');
-    VOC.addLog('=== 连通性检查开始（' + (direct ? '直连中转' : '经本机转发') + '）===', 'hi');
+    /* 经作者中转时，检查走的是一个专门的健康接口：GET /tts/health，
+       不带 Key、不带文本、不碰上游 —— 服务器不为它垫付任何合成费用。
+       它只说明中转活着，不能当成"你的 Key 与音色可用"。 */
+    var af = usingAF() ? afURL(S.ttsTarget) : '';
+    var direct = !forwarding();
+    var chan = af ? '经作者中转' : (direct ? '直连' : '经本机转发');
+    VOC.addLog('=== 连通性检查开始（' + chan + '）===', 'hi');
     if (!S.ttsTarget) { say('还没填「合成地址」。'); toast('先填合成地址'); return Promise.resolve(false); }
+    if (!direct && isOfficial() && !afReady()) {
+      say('这个官方地址作者中转不认 —— 它只转 Fish 官方与 MiniMax 国际站两个端点。'
+        + '请把地址改回官方端点，或切到「中转」填你自己的中转地址。');
+      toast('作者中转不支持这个地址');
+      return Promise.resolve(false);
+    }
 
-    var url = direct ? S.ttsTarget : (S.ttsProxy || '');
-    if (!direct && !S.ttsProxy) { say('转发地址是空的。「转发地址」那一格填 http://127.0.0.1:8799/v1/tts'); toast('缺转发地址'); return Promise.resolve(false); }
+    var url = af ? afHealth() : (direct ? S.ttsTarget : (S.ttsProxy || ''));
+    if (!direct && !af && !S.ttsProxy) { say('转发地址是空的。「转发地址」那一格填 http://127.0.0.1:8799/v1/tts'); toast('缺转发地址'); return Promise.resolve(false); }
     if (direct && S.ttsAuth !== 'none' && !S.ttsKey) { say('直连模式要填令牌（或把鉴权改成「不带」）。'); toast('缺令牌'); return Promise.resolve(false); }
+    if (af && S.ttsAuth !== 'none' && !S.ttsKey) { say('经作者中转要用你自己的官方 API Key，先填「官方 API Key」。'); toast('缺官方 Key'); return Promise.resolve(false); }
 
-    say('正在检查（' + (direct ? '直连中转' : '经本机转发') + '）…', 'hi');
-    VOC.addLog('打 ' + url + '（空文本，不产生合成计费）', 'hi');
+    say('正在检查（' + chan + '）…', 'hi');
+    VOC.addLog(af ? ('打 ' + url + '（健康接口，不带 Key、不带文本）')
+      : ('打 ' + url + '（空文本，不产生合成计费）'), 'hi');
     var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var timer = ctl ? setTimeout(function () { ctl.abort(); }, 12000) : null;
     var t0 = Date.now();
     var headers = { 'Content-Type': 'application/json' };
-    // 跟真正合成时（cfgNow）同一条规则：OpenAI 平台一律不带模型头。头不一样，跨域预检的结果就对不上，检查会报反
-    var noMH = (S.ttsPlatform === 'openai') ? true : !!S.ttsNoModelHdr;
-    if (direct) {
-      if (S.ttsAuth === 'x-api-key' && S.ttsKey) headers['x-api-key'] = S.ttsKey;
-      else if (S.ttsAuth === 'raw' && S.ttsKey) headers['Authorization'] = S.ttsKey;
-      else if (S.ttsAuth !== 'none' && S.ttsKey) headers['Authorization'] = 'Bearer ' + S.ttsKey;
-      if (S.ttsModel && !noMH) headers[S.ttsModelHdr || 'model'] = S.ttsModel;
-      var exRaw = String(S.ttsExtraHdrs || '').trim();
-      if (exRaw) { try { var ex = JSON.parse(exRaw) || {}; Object.keys(ex).forEach(function (k) { headers[k] = String(ex[k]); }); } catch (e) { /* 忽略 */ } }
-    } else {
-      headers['x-toylink-target'] = S.ttsTarget;
-      if (S.ttsModel) headers['x-toylink-model'] = S.ttsModel;
-      if (S.ttsModelHdr && S.ttsModelHdr !== 'model') headers['x-toylink-modelheader'] = S.ttsModelHdr;
-      if (noMH) headers['x-toylink-noheaders'] = '1';
-      if (S.ttsAuth && S.ttsAuth !== 'bearer') headers['x-toylink-auth'] = S.ttsAuth;
-      var exRaw2 = String(S.ttsExtraHdrs || '').trim();
-      if (exRaw2) headers['x-toylink-extra'] = exRaw2;
+    // 跟真正合成时（cfgNow）同一条规则：OpenAI / MiniMax 一律不带模型头。头不一样，跨域预检的结果就对不上，检查会报反
+    var noMH = (S.ttsPlatform === 'openai' || S.ttsPlatform === 'minimax') ? true : !!S.ttsNoModelHdr;
+    if (!af) {
+      if (direct) {
+        if (S.ttsAuth === 'x-api-key' && S.ttsKey) headers['x-api-key'] = S.ttsKey;
+        else if (S.ttsAuth === 'raw' && S.ttsKey) headers['Authorization'] = S.ttsKey;
+        else if (S.ttsAuth !== 'none' && S.ttsKey) headers['Authorization'] = 'Bearer ' + S.ttsKey;
+        if (S.ttsModel && !noMH) headers[S.ttsModelHdr || 'model'] = S.ttsModel;
+        var exRaw = String(S.ttsExtraHdrs || '').trim();
+        if (exRaw) { try { var ex = JSON.parse(exRaw) || {}; Object.keys(ex).forEach(function (k) { headers[k] = String(ex[k]); }); } catch (e) { /* 忽略 */ } }
+      } else {
+        headers['x-toylink-target'] = S.ttsTarget;
+        if (S.ttsModel) headers['x-toylink-model'] = S.ttsModel;
+        if (S.ttsModelHdr && S.ttsModelHdr !== 'model') headers['x-toylink-modelheader'] = S.ttsModelHdr;
+        if (noMH) headers['x-toylink-noheaders'] = '1';
+        if (S.ttsAuth && S.ttsAuth !== 'bearer') headers['x-toylink-auth'] = S.ttsAuth;
+        var exRaw2 = String(S.ttsExtraHdrs || '').trim();
+        if (exRaw2) headers['x-toylink-extra'] = exRaw2;
+      }
     }
 
-    return fetch(url, {
-      method: 'POST', headers: headers,
-      body: JSON.stringify({ text: '', format: S.ttsFormat }),
-      signal: ctl ? ctl.signal : undefined
-    }).then(function (r) {
+    var req = af
+      ? fetch(url, { method: 'GET', credentials: 'omit', referrerPolicy: 'no-referrer', signal: ctl ? ctl.signal : undefined })
+      : fetch(url, {
+        method: 'POST', headers: headers,
+        body: JSON.stringify({ text: '', format: S.ttsFormat }),
+        signal: ctl ? ctl.signal : undefined,
+        credentials: 'omit', referrerPolicy: 'no-referrer'
+      });
+    return req.then(function (r) {
       if (timer) clearTimeout(timer);
       var ms = Date.now() - t0;
       var ct = r.headers.get('content-type') || '';
+      if (af) {
+        // 只有 GET 200 且 ok:true 才算中转活着
+        return r.text().then(function (tx) {
+          var j = null; try { j = JSON.parse(tx); } catch (e) { /* 非 JSON 就走下面的分支 */ }
+          if (r.ok && j && j.ok) {
+            say('作者中转在线（' + r.status + ' · ' + ms + 'ms · 当前处理中 ' + (j.active | 0) + '）—— '
+              + '这只能说明中转活着，能不能出声还得点「试听一句」用真实 Key 验一次。', 'ok');
+            return true;
+          }
+          if (r.status === 429) {
+            say('作者中转正忙（429）—— 它是给少量人共用的，等几秒再试，别连着重发。', 'err');
+          } else {
+            say('作者中转回了 ' + r.status + (tx ? '：' + String(tx).slice(0, 120) : ''), 'err');
+          }
+          return false;
+        }, function () { return false; });
+      }
       if (r.ok && ct.indexOf('json') < 0) {
         say('通到上游了（' + r.status + ' · ' + ms + 'ms）—— 可以直接试听。', 'ok');
         return true;
@@ -7037,9 +7223,10 @@ textarea{
       if (timer) clearTimeout(timer);
       var msg = (e && e.name === 'AbortError') ? '超时（12 秒）' : ((e && e.message) || String(e));
       if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
-        say(direct
-          ? '直连被拦下了。多半是中转没开跨域（CORS）—— 用上面的「两种方式都试一次」比一下，或用「经本机转发」。'
-          : '连不上转发脚本。先在命令行跑 node 工具-转发.js，确认提示「已就绪」再回来。', 'err');
+        say(af ? '连不上作者中转 —— 检查一下网络，或换「浏览器直打 / 填你自己的中转」。'
+          : (direct
+            ? '直连被拦下了。多半是中转没开跨域（CORS）—— 用上面的「两种方式都试一次」比一下，或在官网那一档改成「经本作者中转服务器转发」。'
+            : '连不上转发脚本。先在命令行跑 node 工具-转发.js，确认提示「已就绪」再回来。'), 'err');
       } else {
         say('检查失败：' + msg, 'err');
       }
@@ -7049,24 +7236,29 @@ textarea{
   onEl('#c-voice-ping', 'click', voicePing);
 
   /* 两种方式都试一次：同一份配置，换通道各打一次，差别立刻看得出来
-     （多半是直连被跨域拦）。只探不通，不改用户当前选的传输方式。 */
+     （多半是直连被跨域拦）。只探不通，不改用户当前选的传输方式。
+     官网那一档的第二发就是"经作者中转"（走 /tts/health），
+     自有中转那一档的第二发是"经本机转发"。 */
   function voicePingBoth() {
     var keep = S.ttsTransport;
+    var two = isOfficial() && afReady() ? '经作者中转' : '经本机转发';
     var h = $('#vs-ping-hint');
     if (h) h.textContent = '先测直连…';
-    VOC.addLog('=== 对比检查：先直连中转 ===', 'hi');
+    VOC.addLog('=== 对比检查：先直连 ===', 'hi');
     S.ttsTransport = 'direct';
     voicePing().then(function (dOk) {
-      VOC.addLog('=== 对比检查：再经本机转发 ===', 'hi');
+      VOC.addLog('=== 对比检查：再' + two + ' ===', 'hi');
       S.ttsTransport = 'relay';
       voicePing().then(function (rOk) {
         S.ttsTransport = keep;      // 探完还原，不动用户的选择
         var msg = (dOk && rOk) ? '两种方式都通 —— 直连更省事，保持直连即可。'
-          : (dOk ? '只有直连通（转发脚本没跑或没配令牌）。'
-            : (rOk ? '只有本机转发通 —— 直连被跨域拦了，这就是差别所在。建议切到「经本机转发」。'
-              : '两种都不通：先确认合成地址、令牌（或 relay-key.txt）是不是对的。'));
+          : (dOk ? '只有直连通（' + two + '那边没通）。'
+            : (rOk ? (two === '经作者中转'
+              ? '只有经作者中转通 —— 直连被跨域拦了。建议切到「经本作者中转服务器转发」。'
+              : '只有本机转发通 —— 直连被跨域拦了，这就是差别所在。建议切到「经本机转发」。')
+              : '两种都不通：先确认合成地址、令牌' + (two === '经本机转发' ? '（或 relay-key.txt）' : '') + '是不是对的。'));
         if (h) h.textContent = msg;
-        VOC.addLog('对比结果：直连=' + (dOk ? '通' : '不通') + '，转发=' + (rOk ? '通' : '不通') + '。' + msg, (dOk || rOk) ? 'ok' : 'err');
+        VOC.addLog('对比结果：直连=' + (dOk ? '通' : '不通') + '，' + two + '=' + (rOk ? '通' : '不通') + '。' + msg, (dOk || rOk) ? 'ok' : 'err');
         toast(msg, 4000);
       });
     });
@@ -7364,7 +7556,9 @@ textarea{
     var el = $('#s-tts-target'); if (el) el.value = off;
     S.ttsTransport = 'direct';                      // 官网默认浏览器直打（会被跨域拦，文案里已说明）
     paintTransport(); persist();
-    toast('官网直连：已填官方地址。若被跨域拦下，打开「经本机转发」', 3600);
+    toast(afReady()
+      ? '官网直连：已填官方地址。官方不给跨域头，把走法切到「经本作者中转服务器转发」才能跑通'
+      : '官网直连：已填官方地址（若被跨域拦下，切到「中转」填你自己的中转地址）', 4600);
   });
   onEl('#s-tp-relay', 'click', function () {
     if (!isOfficial()) { toast('当前已经是「中转」模式'); return; }
@@ -7375,20 +7569,39 @@ textarea{
     toast(S.ttsTarget ? '已切回「中转」' : '已切回「中转」，填上你的中转地址', 3200);
   });
 
-  /* 走法：浏览器直打 / 经本机转发。
-     它不影响"连到哪儿"，两条路都能配官网、也都能配中转。 */
+  /* 请求怎么发：浏览器直打 / 经作者的中转服务器转发（官网那一档）
+     或 / 经本机转发（自有中转那一档）。
+     切这一下只改走法，不动地址也不动 Key。 */
   onEl('#s-tp-forward', 'click', function () {
-    S.ttsTransport = (S.ttsTransport === 'direct') ? 'relay' : 'direct';
-    // 第一次切到转发、而转发地址还空着时，给它填上默认值，省得用户去猜格式
-    if (S.ttsTransport === 'relay' && !S.ttsProxy) {
+    var official = isOfficial();
+    var on = forwarding();
+    if (on) {
+      S.ttsTransport = 'direct';
+      paintTransport(); persist();
+      toast(official ? '改回「浏览器直打」（官方端点会被跨域拦）' : '改回「浏览器直打」', 3200);
+      return;
+    }
+    /* 打开转发：官网那一档走作者的中转服务器，自有中转那一档走本机脚本。
+       先看这一档到底能不能走，别让人点完才发现地址不认。 */
+    if (official) {
+      if (!afReady()) {
+        paintTransport(); persist();
+        toast('这个官方地址作者中转不认（只转 Fish 与 MiniMax 国际站官方端点）', 4600);
+        return;
+      }
+      S.ttsTransport = 'af';
+      paintTransport(); persist();
+      toast('改走「经本作者中转服务器转发」：请求经作者的中转服务器发出，不用本机跑脚本', 4600);
+      return;
+    }
+    S.ttsTransport = 'relay';
+    // 自有中转那一档要本机脚本，第一次切过来时给个默认地址，省得用户去猜格式
+    if (!S.ttsProxy) {
       S.ttsProxy = 'http://127.0.0.1:8799/v1/tts';
       var px = $('#s-tts-proxy'); if (px) px.value = S.ttsProxy;
     }
-    paintTransport();
-    persist();
-    toast(S.ttsTransport === 'direct'
-      ? '改回「浏览器直打」（官方端点会被跨域拦）'
-      : '改走「经本机转发」：请求由 node 工具-转发.js 发出，没有跨域限制', 3600);
+    paintTransport(); persist();
+    toast('改走「经本机转发」：请求由 node 工具-转发.js 发出，没有跨域限制', 4200);
   });
 
   // 鉴权方式：四档循环
@@ -7793,7 +8006,11 @@ textarea{
     if (!S.relaySavedTarget && S.ttsTarget && !isOfficial()) S.relaySavedTarget = S.ttsTarget;
     if (typeof g.toy_tts_key === 'string') S.ttsKey = g.toy_tts_key;
     if (typeof g.toy_tts_proxy === 'string') S.ttsProxy = g.toy_tts_proxy;
-    if (g.toy_tts_transport === 'direct' || g.toy_tts_transport === 'relay') S.ttsTransport = g.toy_tts_transport;
+    /* 三态都要认：direct＝浏览器直打，af＝经作者中转，relay＝经本机脚本。
+       少认一个，用户重启面板后那条通道的选择就被悄悄吞掉、退回直连。 */
+    if (g.toy_tts_transport === 'direct' || g.toy_tts_transport === 'af' || g.toy_tts_transport === 'relay') {
+      S.ttsTransport = g.toy_tts_transport;
+    }
     if (typeof g.toy_tts_auth === 'string') S.ttsAuth = g.toy_tts_auth;
     if (typeof g.toy_tts_voice === 'string') S.ttsVoice = g.toy_tts_voice;
     if (typeof g.toy_tts_voicet === 'string') S.ttsVoiceTease = g.toy_tts_voicet;
@@ -7903,7 +8120,7 @@ textarea{
     if (typeof v.toy_cfg_proxy === 'string') S.ttsProxy = v.toy_cfg_proxy;
     // 传输方式与令牌。老聊天里没有这两个键，缺省保持 relay + 空令牌 ——
     // 也就是"升级后行为不变"，不会突然开始直连或凭空多出个密钥字段。
-    if (v.toy_cfg_transport === 'direct' || v.toy_cfg_transport === 'relay') S.ttsTransport = v.toy_cfg_transport;
+    if (v.toy_cfg_transport === 'direct' || v.toy_cfg_transport === 'af' || v.toy_cfg_transport === 'relay') S.ttsTransport = v.toy_cfg_transport;
     if (typeof v.toy_cfg_ttskey === 'string') S.ttsKey = v.toy_cfg_ttskey;
     // 高级项：老聊天里没有，缺省保持标准 Fish 协议的行为
     if (typeof v.toy_cfg_modelhdr === 'string' && v.toy_cfg_modelhdr) S.ttsModelHdr = v.toy_cfg_modelhdr;
