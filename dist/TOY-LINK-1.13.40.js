@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.13.39 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.13.40 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -16,7 +16,7 @@ function TOYLINK_BOOT() {
    * 而且自更新本来存在的意义就是"修好下一版"，它自己却先被卡死了。
    * 放到最前之后，只要脚本还能执行到第一行，就能把新版写回脚本库。 */
   (function () {
-    var VERSION = "1.13.39";
+    var VERSION = "1.13.40";
 /* =========================================================
      * 自更新
      *
@@ -234,11 +234,11 @@ function TOYLINK_BOOT() {
    *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
    *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    if (window.__TOYLINK__.version === "1.13.39") {
+    if (window.__TOYLINK__.version === "1.13.40") {
       window.__TOYLINK__.toggle();
       return;
     }
-    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.39"); } catch (e) {}
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.40"); } catch (e) {}
     try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
     try {
       var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
@@ -385,7 +385,7 @@ function TOYLINK_BOOT() {
   }, 2500);
 
   /* ==================== 悬浮球：紫色小 lelo（源码见构建脚本里的 TOY_BALL_RUNTIME） ==================== */
-  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.39";
+  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.40";
   var TK_S = null;   // 主脚本跑起来后指向它的装置状态 S
   var TK_SPRING_LIN = "linear(0, 0.0235, 0.084, 0.1688, 0.2674, 0.3716, 0.4753, 0.574, 0.6646, 0.7453, 0.8153, 0.8743, 0.9228, 0.9614, 0.9911, 1.0131, 1.0285, 1.0384, 1.0439, 1.0459, 1.0453, 1.0429, 1.0392, 1.0348, 1.03, 1.0252, 1.0206, 1.0164, 1.0125, 1.0092, 1.0064, 1.004, 1.0022, 1.0007, 0.9996, 0.9988, 0.9983, 0.998, 0.9979, 0.9979, 1)", TK_SPRING_MS = 728;
   function TOY_BALL_SVG(u) {
@@ -714,7 +714,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.39';
+  var VERSION = '1.13.40';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2411,12 +2411,31 @@ function TOYLINK_BOOT() {
           if (!r.ok) {
             return r.text().then(function (tx) {
               var detail = String(tx || '').slice(0, 200);
-              vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）'
-                + (r.status === 401 || r.status === 403 ? ' ← 鉴权失败，检查令牌与鉴权方式'
-                  : r.status === 404 ? ' ← 路径不对，检查合成地址'
-                    : r.status === 413 ? ' ← 请求体太大'
-                      : r.status === 429 ? ' ← 触发限流（并发/配额），等几秒再试，不要连着重发' : '')
-                + (detail ? ' · ' + detail : ''), 'err');
+              /* 402 是"官方那边的 API 余额/额度不够"。
+                 Fish 特别注明：API credit 与平台 credit 是分开的两套 ——
+                 网页版有额度，不代表 API 端口能用，这一点最容易误解。
+                 而 s2.1-pro-free 是官方标称 $0 的同一个模型，所以先劝他换过去试。 */
+              var isCredit = (r.status === 402) || /credit|balance|quota|insufficient/i.test(detail);
+              var freeNow = String(S.ttsModel || '').indexOf('-free') >= 0;
+              var how = (r.status === 401 || r.status === 403) ? ' ← 鉴权失败，检查令牌与鉴权方式'
+                : r.status === 404 ? ' ← 路径不对，检查合成地址'
+                  : r.status === 413 ? ' ← 请求体太大'
+                    : r.status === 429 ? ' ← 触发限流（并发/配额），等几秒再试，不要连着重发'
+                      : isCredit ? ' ← 官方说 API credit 不足'
+                        : '';
+              vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）' + how + (detail ? ' · ' + detail : ''), 'err');
+              if (isCredit) {
+                vlog('  官方说明：API credit 与平台 credit 是分开的两套，'
+                  + '网页版有额度不等于 API 端口能用；充值/查余额：'
+                  + 'https://fish.audio/app/developers', 'err');
+                if (c.plat === 'fish' && !freeNow) {
+                  vlog('  现在用的是付费型号 ' + (S.ttsModel || '(空)') + '，'
+                    + '把它改成 s2.1-pro-free 就是同一个模型的免费档，先拿它试通路。', 'hi');
+                  toast('Fish 的 API 余额不足。模型先换成 s2.1-pro-free（同一个模型的免费档）再试', 7000);
+                } else if (c.plat === 'fish' && freeNow) {
+                  toast('官方回了余额不足 —— 免费档也被限了，得去官网看 API credit', 7000);
+                }
+              }
               throw new Error(who + '返回 ' + r.status + '：' + detail);
             }, function () {
               vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）', 'err');
@@ -5528,15 +5547,21 @@ function TOYLINK_BOOT() {
       /* 型号清单按官方文档列（models-overview）：
          s1 用 (括号) 情绪、S2 系列用 [方括号]；s1 将于 2026-12-31 退役。
          官方没有"列出 TTS 型号"的接口（GET /model 列的是你的音色，不是引擎型号），
-         所以这里是静态清单，不是拉取来的。 */
+         所以这里是静态清单，不是拉取来的。
+         顺序有讲究：第一条是「推荐」按钮填的那个，所以放免费的
+         s2.1-pro-free —— 付费档要求账号里有 API credit（和平台 credit 是两套），
+         新用户拿付费档开箱就吃 402。 */
       modelList: [
-        { id: 's2.1-pro', label: 'S2.1-Pro · 推荐，质量最好（计费）' },
-        { id: 's2.1-pro-free', label: 'S2.1-Pro Free · 同一个模型，$0（公平使用限额）' },
+        { id: 's2.1-pro-free', label: 'S2.1-Pro Free · $0 档，同一个模型（公平使用限额）' },
+        { id: 's2.1-pro', label: 'S2.1-Pro · 质量档，按次计费，账号里要有 API credit' },
         { id: 's2-pro', label: 'S2-Pro · 上一代' },
         { id: 's1', label: 'S1 · 已弃用，2026-12-31 退役' }
       ],
       modelHint: '官方型号只有这四个（<code>s1</code> 与 S2 系列的情绪写法不同：'
-        + 'S2 用 <code>[方括号]</code>，S1 用 <code>(括号)</code>）。'
+        + 'S2 用 <code>[方括号]</code>，S1 用 <code>(括号)</code>）。<br>'
+        + '<b>付费档要有 API credit</b> —— 它和网页版的平台 credit 是分开的两套，'
+        + '余额不足时官方直接回 402。'
+        + '想先跑通路就选 <code>s2.1-pro-free</code>（同一个模型的免费档）。'
         + '官网没有"列型号"的接口，这份清单照官方文档写死，可以自己改。',
       note: '主推：情绪标记（<code>[panting]</code> <code>[气声]</code>）完整支持，'
         + '音色库与本站同一套协议。<br>音色 ID 在音色库页面点进某个音色后复制。',
@@ -8070,7 +8095,7 @@ function TOYLINK_BOOT() {
   // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板
 
   window.__TOYLINK__ = {
-    version: "1.13.39",
+    version: "1.13.40",
     host: host, root: root, ball: ball, page: PAGE,
     resetLayout: TK_API.resetLayout,   // 面板位置不对劲时，控制台敲 __TOYLINK__.resetLayout()
     open: open, collapse: collapse, toggle: toggle,

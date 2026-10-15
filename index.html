@@ -1468,7 +1468,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.39';
+  var VERSION = '1.13.40';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -3165,12 +3165,31 @@ textarea{
           if (!r.ok) {
             return r.text().then(function (tx) {
               var detail = String(tx || '').slice(0, 200);
-              vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）'
-                + (r.status === 401 || r.status === 403 ? ' ← 鉴权失败，检查令牌与鉴权方式'
-                  : r.status === 404 ? ' ← 路径不对，检查合成地址'
-                    : r.status === 413 ? ' ← 请求体太大'
-                      : r.status === 429 ? ' ← 触发限流（并发/配额），等几秒再试，不要连着重发' : '')
-                + (detail ? ' · ' + detail : ''), 'err');
+              /* 402 是"官方那边的 API 余额/额度不够"。
+                 Fish 特别注明：API credit 与平台 credit 是分开的两套 ——
+                 网页版有额度，不代表 API 端口能用，这一点最容易误解。
+                 而 s2.1-pro-free 是官方标称 $0 的同一个模型，所以先劝他换过去试。 */
+              var isCredit = (r.status === 402) || /credit|balance|quota|insufficient/i.test(detail);
+              var freeNow = String(S.ttsModel || '').indexOf('-free') >= 0;
+              var how = (r.status === 401 || r.status === 403) ? ' ← 鉴权失败，检查令牌与鉴权方式'
+                : r.status === 404 ? ' ← 路径不对，检查合成地址'
+                  : r.status === 413 ? ' ← 请求体太大'
+                    : r.status === 429 ? ' ← 触发限流（并发/配额），等几秒再试，不要连着重发'
+                      : isCredit ? ' ← 官方说 API credit 不足'
+                        : '';
+              vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）' + how + (detail ? ' · ' + detail : ''), 'err');
+              if (isCredit) {
+                vlog('  官方说明：API credit 与平台 credit 是分开的两套，'
+                  + '网页版有额度不等于 API 端口能用；充值/查余额：'
+                  + 'https://fish.audio/app/developers', 'err');
+                if (c.plat === 'fish' && !freeNow) {
+                  vlog('  现在用的是付费型号 ' + (S.ttsModel || '(空)') + '，'
+                    + '把它改成 s2.1-pro-free 就是同一个模型的免费档，先拿它试通路。', 'hi');
+                  toast('Fish 的 API 余额不足。模型先换成 s2.1-pro-free（同一个模型的免费档）再试', 7000);
+                } else if (c.plat === 'fish' && freeNow) {
+                  toast('官方回了余额不足 —— 免费档也被限了，得去官网看 API credit', 7000);
+                }
+              }
               throw new Error(who + '返回 ' + r.status + '：' + detail);
             }, function () {
               vlog(who + ' 回 ' + r.status + '（' + ms + 'ms）', 'err');
@@ -6282,15 +6301,21 @@ textarea{
       /* 型号清单按官方文档列（models-overview）：
          s1 用 (括号) 情绪、S2 系列用 [方括号]；s1 将于 2026-12-31 退役。
          官方没有"列出 TTS 型号"的接口（GET /model 列的是你的音色，不是引擎型号），
-         所以这里是静态清单，不是拉取来的。 */
+         所以这里是静态清单，不是拉取来的。
+         顺序有讲究：第一条是「推荐」按钮填的那个，所以放免费的
+         s2.1-pro-free —— 付费档要求账号里有 API credit（和平台 credit 是两套），
+         新用户拿付费档开箱就吃 402。 */
       modelList: [
-        { id: 's2.1-pro', label: 'S2.1-Pro · 推荐，质量最好（计费）' },
-        { id: 's2.1-pro-free', label: 'S2.1-Pro Free · 同一个模型，$0（公平使用限额）' },
+        { id: 's2.1-pro-free', label: 'S2.1-Pro Free · $0 档，同一个模型（公平使用限额）' },
+        { id: 's2.1-pro', label: 'S2.1-Pro · 质量档，按次计费，账号里要有 API credit' },
         { id: 's2-pro', label: 'S2-Pro · 上一代' },
         { id: 's1', label: 'S1 · 已弃用，2026-12-31 退役' }
       ],
       modelHint: '官方型号只有这四个（<code>s1</code> 与 S2 系列的情绪写法不同：'
-        + 'S2 用 <code>[方括号]</code>，S1 用 <code>(括号)</code>）。'
+        + 'S2 用 <code>[方括号]</code>，S1 用 <code>(括号)</code>）。<br>'
+        + '<b>付费档要有 API credit</b> —— 它和网页版的平台 credit 是分开的两套，'
+        + '余额不足时官方直接回 402。'
+        + '想先跑通路就选 <code>s2.1-pro-free</code>（同一个模型的免费档）。'
         + '官网没有"列型号"的接口，这份清单照官方文档写死，可以自己改。',
       note: '主推：情绪标记（<code>[panting]</code> <code>[气声]</code>）完整支持，'
         + '音色库与本站同一套协议。<br>音色 ID 在音色库页面点进某个音色后复制。',
