@@ -21,5 +21,8 @@
 !/TOY-LINK脚本.json
 !/version.txt
 !/工具-一键修复.js
+!/工具-中转-Node版.js
+!/工具-中转-Worker版.js
+!/官网直连-部署说明.md
 !/dist/
 !/dist/**
