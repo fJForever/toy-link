@@ -56,14 +56,14 @@ ss -ltnp | grep -E ':(80|443)\b' || echo "80/443 空闲"
 
 ## 2. 下载中转脚本
 
-脚本已经从项目仓库的 `relay-only` 分支提供（**中文文件名，URL 必须编码**）：
+脚本已经从项目仓库提供（**中文文件名，URL 必须编码**）：
 
 ```bash
 mkdir -p /opt/toylink-relay && cd /opt/toylink-relay
 
 # Node 版中转（零依赖，只需要 Node 18+）
 curl -fsSL -o relay.js \
-  "https://raw.githubusercontent.com/fJForever/toy-link/relay-only/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
+  "https://raw.githubusercontent.com/fJForever/toy-link/port-to-1132/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
 
 # 校验：文件应约 5.9KB，并且含这几个标志
 wc -c relay.js
@@ -76,7 +76,7 @@ node --check relay.js && echo "SYNTAX_OK"
 
 ```bash
 curl -fsSL -o relay.js \
-  "https://fastly.jsdelivr.net/gh/fJForever/toy-link@relay-only/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
+  "https://fastly.jsdelivr.net/gh/fJForever/toy-link@port-to-1132/%E5%B7%A5%E5%85%B7-%E4%B8%AD%E8%BD%AC-Node%E7%89%88.js"
 ```
 
 两个地址都拿不到时，说明网络受限——告诉操作者，不要凭记忆重写这段代码，
