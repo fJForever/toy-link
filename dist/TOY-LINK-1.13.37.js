@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.13.36 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.13.37 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -16,7 +16,7 @@ function TOYLINK_BOOT() {
    * 而且自更新本来存在的意义就是"修好下一版"，它自己却先被卡死了。
    * 放到最前之后，只要脚本还能执行到第一行，就能把新版写回脚本库。 */
   (function () {
-    var VERSION = "1.13.36";
+    var VERSION = "1.13.37";
 /* =========================================================
      * 自更新
      *
@@ -234,11 +234,11 @@ function TOYLINK_BOOT() {
    *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
    *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    if (window.__TOYLINK__.version === "1.13.36") {
+    if (window.__TOYLINK__.version === "1.13.37") {
       window.__TOYLINK__.toggle();
       return;
     }
-    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.36"); } catch (e) {}
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.37"); } catch (e) {}
     try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
     try {
       var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
@@ -385,7 +385,7 @@ function TOYLINK_BOOT() {
   }, 2500);
 
   /* ==================== 悬浮球：紫色小 lelo（源码见构建脚本里的 TOY_BALL_RUNTIME） ==================== */
-  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.36";
+  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.37";
   var TK_S = null;   // 主脚本跑起来后指向它的装置状态 S
   var TK_SPRING_LIN = "linear(0, 0.0235, 0.084, 0.1688, 0.2674, 0.3716, 0.4753, 0.574, 0.6646, 0.7453, 0.8153, 0.8743, 0.9228, 0.9614, 0.9911, 1.0131, 1.0285, 1.0384, 1.0439, 1.0459, 1.0453, 1.0429, 1.0392, 1.0348, 1.03, 1.0252, 1.0206, 1.0164, 1.0125, 1.0092, 1.0064, 1.004, 1.0022, 1.0007, 0.9996, 0.9988, 0.9983, 0.998, 0.9979, 0.9979, 1)", TK_SPRING_MS = 728;
   function TOY_BALL_SVG(u) {
@@ -714,7 +714,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.36';
+  var VERSION = '1.13.37';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -1794,12 +1794,13 @@ function TOYLINK_BOOT() {
     voiceWarm: false,    // 启动装置时预热固定音集 —— 会真的发 5 次合成请求（花额度），所以默认关
     warmTouched: false,  // 用户是否亲手改过"启动时预热"。没碰过的人升级后走新默认（关）
     ttsProxy: '',                                // 已废弃：本机转发拆掉后不再使用（留着这个键免得老存档读取报错）
-    /* direct：直连中转（默认）—— 只要中转自己开了跨域就能通，不需要任何本机脚本
-       af：经作者的中转服务器 —— 官方不给跨域头，靠它转发 */
-    ttsTransport: 'direct',
+    /* af：经作者的中转服务器（默认）—— 官方不给跨域头，浏览器直打必然被拦；
+       所以默认就该是"打得通的那条"，直连留给第三方中转那种自己不拦的场景。
+       通道是显式保存的，升级上来的老配置不会被改道（见 restoreGlobal 的折算规则）。 */
+    ttsTransport: 'af',
     ttsKey: '',          // 面板里填的 Key：直连或经作者中转都用它
     ttsTarget: '',       // 当前要打的完整地址（官网端点或你自己的中转地址）
-    relaySavedTarget: '', // 「官网直连」之前那个中转地址，切回「中转」时还回去
+    relaySavedTarget: '', // 切到「官网 api」之前那个中转地址，切回「中转 api」时还回去
     ttsVoice: '',        // 你拿着遥控器时的音色（被作用的是 TA，出呻吟）
     ttsVoiceTease: '',   // TA 拿着遥控器时的音色（出调教对白）。留空 = 与上面共用同一个
     ttsModel: 's2.1-pro-free',
@@ -6070,7 +6071,7 @@ function TOYLINK_BOOT() {
       if (ant) ant.textContent = '中转不走标准 Bearer 时改这里。';
     }
 
-    /* 走法只剩两条：浏览器直打 / 经作者的中转服务器转发。
+    /* 走法只剩两条：作者的中转服务器（默认）/ 浏览器直打（备选）。
        「经本机转发」（本机跑 node 工具-转发.js）已经拆掉 —— 手机用户跑不了那个脚本，
        能跑的人也没因此少一步麻烦，留着只会让人点进死路。 */
     var af = usingAF();                             // 真的在走作者中转
@@ -6082,13 +6083,17 @@ function TOYLINK_BOOT() {
         knt.innerHTML = '走这一档时<b>必须填</b>：中转只转发，不带任何 Key，'
           + '官方那边认的就是你自己的这一把。存在本机（跟着用户存档），新建对话不用重填。';
       } else if (official) {
-        knt.innerHTML = '<b style="color:var(--amber)">浏览器直打官方端点会被跨域拦下</b>（报 Failed to fetch）。'
-          + '把上面的走法切到「作者的中转服务器」就能跑通，手机上也能用。';
+        knt.innerHTML = '<b style="color:var(--amber)">现在的走法是「浏览器直打」，这样打不通</b>：'
+          + '官方端点不给跨域头，浏览器一定拦下（报 Failed to fetch）。<br>'
+          + '点上面那颗切回「作者的中转服务器」—— 那才是默认能用的一条。';
       } else {
         knt.innerHTML = '第三方中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
           + '存在本机（跟着用户存档），新建对话不用重填。';
       }
     }
+    /* 两条通道摆在一起，但官网那一档下它们并不等价：
+       「作者的中转服务器」是打得通的那条，「浏览器直打」必然被官方跨域拦下。
+       所以按钮文案自己带状态，说明文只讲"你现在选的这条会怎样" —— 不平均用力。 */
     var fw = $('#s-tp-forward');
     if (fw) {
       fw.classList.toggle('on', !direct);
@@ -6099,10 +6104,11 @@ function TOYLINK_BOOT() {
       if (af) {
         fn.innerHTML = '请求经上面的<b>「作者的中转服务器」</b>转发到官方端点，两端都是 HTTPS，'
           + '用的是你自己填的官方 API Key。<br>'
-          + '介意就切回浏览器直打 —— 前提是那个官方端点自己开了跨域。';
+          + '换回「浏览器直打」就要那个官方端点自己开跨域 —— 官方没有，所以这条路走不通。';
       } else if (official && afUsable) {
-        fn.innerHTML = '<b style="color:var(--amber)">浏览器直打官方端点会被拦</b>（官方不给跨域头，'
-          + '报 <code>Failed to fetch</code>）。点这颗切到「作者的中转服务器」就能跑通，手机上也能用。';
+        fn.innerHTML = '<b style="color:var(--amber)">你选的是「浏览器直打」：官方端点不给跨域头，'
+          + '一定会被浏览器拦下（报 <code>Failed to fetch</code>）—— 这是备选，不是能用的那条。</b><br>'
+          + '点这颗切回「作者的中转服务器」就能跑通，手机上也能用。';
       } else if (official) {
         fn.innerHTML = '<b style="color:var(--amber)">这个官方地址作者中转不认</b> —— '
           + '它只固定转发 Fish 官方 <code>api.fish.audio/v1/tts</code> 与 MiniMax 国际站 '
@@ -6110,7 +6116,8 @@ function TOYLINK_BOOT() {
           + 'MiniMax 国内站（<code>api.minimaxi.com</code>）、别的第三方或自建中转都走不了这条路。'
           + '要么把「合成地址」改回官方端点，要么切到上面的「中转 api」填你自己的中转地址。';
       } else {
-        fn.innerHTML = '浏览器直接打你自己的中转站。通不通取决于<b>它有没有开跨域</b>。';
+        fn.innerHTML = '直连你自己填的那个中转地址。'
+          + '通不通取决于<b>它有没有开跨域（CORS）</b> —— 开了就直接用，没开就得让它带上响应头。';
       }
     }
 
@@ -6848,14 +6855,17 @@ function TOYLINK_BOOT() {
     toast(S.ttsTarget ? '已切回「中转」' : '已切回「中转」，填上你的中转地址', 3200);
   });
 
-  /* 请求怎么发：浏览器直打 / 经作者的中转服务器转发。
+  /* 请求怎么发：作者的中转服务器（默认，官网那一档唯一打得通的路）/
+     浏览器直打（备选：第三方中转自己开了跨域时用得上）。
      切这一下只改走法，不动地址也不动 Key。 */
   onEl('#s-tp-forward', 'click', function () {
     var official = isOfficial();
     if (forwarding()) {
       S.ttsTransport = 'direct';
       paintTransport(); persist();
-      toast(official ? '改回「浏览器直打」（官方端点会被跨域拦）' : '改回「浏览器直打」', 3200);
+      toast(official
+        ? '改回「浏览器直打」—— 官方端点不给跨域头，这样是打不通的（备选状态）'
+        : '改回「浏览器直打」', official ? 5200 : 3200);
       return;
     }
     /* 打开转发：只有官网那一档走得通 —— 作者的中转只认两个官方端点。
@@ -7269,12 +7279,23 @@ function TOYLINK_BOOT() {
     if (typeof g.toy_tts_target === 'string') S.ttsTarget = g.toy_tts_target;
     if (typeof g.toy_tts_relay_target === 'string') S.relaySavedTarget = g.toy_tts_relay_target;
     /* 老存档里没有 relaySavedTarget：如果当前地址不是官网，就把它当作中转地址记下来 ——
-       否则用户第一次点「官网直连」会把自己填的中转地址弄丢。 */
+       否则用户第一次点「官网 api」会把自己填的中转地址弄丢。 */
     if (!S.relaySavedTarget && S.ttsTarget && !isOfficial()) S.relaySavedTarget = S.ttsTarget;
+    /* 从没填过地址的（新装用户）补上官方的默认端点。
+       配合下面通道的默认值 af，新装用户打开语音设置看到的就是一套能直接填 Key 用起来的配置：
+       平台 Fish、地址官方端点、走作者的中转服务器。不补的话默认通道虽在 af，
+       地址却是空的，afReady() 为假 —— 界面会显示"这个地址作者中转不认"，等于默认状态是坏的。 */
+    if (!String(S.ttsTarget || '').trim() && OFFICIAL_URL[S.ttsPlatform]) {
+      S.ttsTarget = OFFICIAL_URL[S.ttsPlatform];
+    }
     if (typeof g.toy_tts_key === 'string') S.ttsKey = g.toy_tts_key;
     if (typeof g.toy_tts_proxy === 'string') S.ttsProxy = g.toy_tts_proxy;   // 已废弃键：读进来只为兼容老存档，不再使用
-    /* 通道：老存档里的 'relay'（以前的"经本机转发"）一律折算成 'direct'。
-       宁可让用户重新点一次开关，也不能把他的 Key 与台词悄悄送到别人的服务器上。 */
+    /* 通道：只有显式存过才覆盖默认值（默认是 af＝作者的中转服务器）。
+       老存档里的：
+         'relay' —— 当年的"经本机转发"，那条路已经拆掉，折算成 'direct'：
+                    宁可让用户重新点一次开关，也不能把他的 Key 与台词悄悄送到别人的服务器上；
+         'direct' —— 保持直连，那是他自己选的。
+       反过来说，键根本不存在的（从没配过 TTS 的人）才留在默认的 af 上。 */
     if (g.toy_tts_transport === 'af') S.ttsTransport = 'af';
     else if (g.toy_tts_transport === 'direct' || g.toy_tts_transport === 'relay') S.ttsTransport = 'direct';
     if (typeof g.toy_tts_auth === 'string') S.ttsAuth = g.toy_tts_auth;
@@ -7939,7 +7960,7 @@ function TOYLINK_BOOT() {
   // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板
 
   window.__TOYLINK__ = {
-    version: "1.13.36",
+    version: "1.13.37",
     host: host, root: root, ball: ball, page: PAGE,
     resetLayout: TK_API.resetLayout,   // 面板位置不对劲时，控制台敲 __TOYLINK__.resetLayout()
     open: open, collapse: collapse, toggle: toggle,
