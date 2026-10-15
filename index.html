@@ -2922,12 +2922,14 @@ textarea{
       try { return new TextEncoder().encode(String(s)).length; } catch (e) { return String(s).length * 3; }
     }
 
-    /* ---- 合成：两种传输方式
+    /* ---- 合成：两条路（浏览器直打 / 经本机转发）
      *
-     * relay 走本机转发：面板不带令牌，由转发脚本补 Authorization。只在直连被跨域拦下时用。
-     * direct 直连中转（默认）：URL + 令牌都填在面板里，令牌跟着聊天变量走。
-     *   —— 少了本机脚本这一步，但令牌会随变量进聊天文件，也会明文落在页面上。
-     *   中转自己开了跨域（Access-Control-Allow-Origin）时，直连才跑得通。
+     * direct 浏览器直打（默认）：URL + 令牌都填在面板里，令牌跟着用户存档走。
+     *   少了本机脚本这一步，但令牌会明文落在页面上；而且只有目标自己开了跨域才通
+     *   —— 官方端点几乎都不开，所以"官网 + 直打"基本必被拦。
+     * relay  经本机转发：请求先发给本机脚本，由它打到目标，没有浏览器跨域那一层。
+     *   令牌优先用面板填的这个（放在 x-toylink-key 里带给脚本），
+     *   面板那格留空就退回脚本自己的 relay-key.txt / 环境变量。
      *
      * 两条路的请求体完全一样，差别只在打到哪、谁来带鉴权头。 ---- */
     function buildHeaders(c) {
@@ -2938,13 +2940,17 @@ textarea{
         else if (c.authstyle !== 'none' && c.key) h['Authorization'] = 'Bearer ' + c.key;
         if (c.model && !c.noModelHdr) h[c.modelHdr] = c.model;
       } else {
-        // 令牌留在转发脚本那边，这里只告诉它打哪、用什么模型、怎么鉴权
+        // 告诉脚本：打哪、用什么模型、怎么鉴权
         h['x-toylink-target'] = c.target || '';
         if (c.model) h['x-toylink-model'] = c.model;
         if (c.modelHdr && c.modelHdr !== 'model') h['x-toylink-modelheader'] = c.modelHdr;
         // 平台级别的"不发 model 头"也要传过去，否则转发脚本会自作主张带上
         if (c.noModelHdr) h['x-toylink-noheaders'] = '1';
         if (c.authstyle && c.authstyle !== 'bearer') h['x-toylink-auth'] = c.authstyle;
+        /* 面板填了令牌就带给脚本（脚本那边 x-toylink-key 优先于 relay-key.txt）。
+           以前这里完全没带 —— 于是"官网 + 经本机转发"时用户在面板里根本找不到
+           填 key 的地方，只能去改 relay-key.txt。 */
+        if (c.authstyle !== 'none' && c.key) h['x-toylink-key'] = c.key;
       }
       // 额外请求头：直连时直接合并；经转发时整块交给脚本合并
       if (c.extraRaw) {
@@ -6622,21 +6628,36 @@ textarea{
       if (tlb) tlb.textContent = '官方地址';
       if (tnt) tnt.innerHTML = '官方 TTS 端点。一般不用改 —— 换平台时这里会自动跟着换。';
       if (klb) klb.textContent = '官方 API Key';
-      if (knt) knt.innerHTML = '<b style="color:var(--amber)">官方直连会遇到跨域限制。</b>'
-        + '官方端点不带 CORS 头，浏览器会直接拦下（报 Failed to fetch）。'
-        + '想真正跑通，把上面的「经本机转发」打开 —— 请求由本机脚本发出，就没有这个限制。';
       if (ant) ant.textContent = '官方走标准 Bearer，不用改。';
     } else {
       if (tlb) tlb.textContent = '中转地址';
       if (tnt) tnt.innerHTML = '你自己的中转站完整地址，例如 <code>https://你的中转域名/v1/tts</code>。';
       if (klb) klb.textContent = '中转令牌';
-      if (knt) knt.innerHTML = '中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
-        + '存在本机（跟着用户存档），新建对话不用重填。';
       if (ant) ant.textContent = '中转不走标准 Bearer 时改这里。';
     }
 
     var rb = $('#s-relay-box'); if (rb) rb.style.display = direct ? 'none' : 'block';
-    var db = $('#s-direct-box'); if (db) db.style.display = direct ? 'block' : 'none';
+    // 令牌框**始终显示**：不管走直打还是经本机转发，用户都要有地方填 key。
+    // 以前转发模式把它整块藏了，用户只能去改 relay-key.txt —— 那是给排错准备的兜底，
+    // 不该是唯一的入口。
+    var db = $('#s-direct-box'); if (db) db.style.display = 'block';
+
+    // 令牌说明：按"官网/中转"×"直打/转发"四种组合给对应的话
+    var knt = $('#s-key-note');
+    if (knt) {
+      if (!direct) {
+        knt.innerHTML = '填了就用这个 key（转发脚本会优先用它）；<b>留空也没关系</b> —— '
+          + '那时用脚本目录里的 <code>relay-key.txt</code>。';
+      } else if (official) {
+        knt.innerHTML = '<b style="color:var(--amber)">官方直连会遇到跨域限制。</b>'
+          + '官方端点不带 CORS 头，浏览器会直接拦下（报 Failed to fetch）。'
+          + '想真正跑通，把上面的「经本机转发」打开 —— 请求由本机脚本发出，就没有这个限制。';
+      } else {
+        knt.innerHTML = '中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
+          + '存在本机（跟着用户存档），新建对话不用重填。'
+          + '<b style="color:var(--amber)">直打会被存进浏览器本地</b>，介意的话打开「经本机转发」。';
+      }
+    }
 
     // 「经本机转发」开关的外观
     var fw = $('#s-tp-forward');
