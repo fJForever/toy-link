@@ -5454,7 +5454,7 @@ function TOYLINK_BOOT() {
     if (needTts) {
       if (!S.ttsTarget) missing.push('合成地址');
       if (toLocal && !S.ttsProxy) missing.push('转发地址');
-      if (isAF && !afURL(S.ttsTarget)) missing.push('（这个官方地址作者中转不认）');
+      if (isAF && !afURL(S.ttsTarget)) missing.push('（这个官方地址本脚本中转不认）');
       if (!toLocal && S.ttsAuth !== 'none' && !S.ttsKey) missing.push(isAF ? '官方 API Key' : '令牌');
     }
     var ready = missing.length === 0;
@@ -6026,7 +6026,7 @@ function TOYLINK_BOOT() {
        自有中转那一档照旧走本机脚本 —— 你自己的中转没开跨域时它还派得上用场。 */
     var af = usingAF();                             // 真的在走作者中转
     var toLocal = (S.ttsTransport === 'relay');     // 走本机脚本那一档
-    var afFree = afReady() || !official;            // 作者中转这条通道能不能用
+    var afUsable = afReady() || !official;            // 作者中转这条通道能不能用
 
     // 令牌说明：按实际通道给对应的话（作者中转要 Key；本机脚本那档才允许留空）
     if (knt) {
@@ -6034,12 +6034,12 @@ function TOYLINK_BOOT() {
         knt.innerHTML = '填了就用这个 key（转发脚本会优先用它）；<b>留空也没关系</b> —— '
           + '那时用脚本目录里的 <code>relay-key.txt</code>。';
       } else if (af) {
-        knt.innerHTML = '经作者中转时<b>必须填</b>：中转只转发，不带任何 Key，'
+        knt.innerHTML = '走这一档时<b>必须填</b>：中转只转发，不带任何 Key，'
           + '官方那边认的就是你自己的这一把。存在本机（跟着用户存档），新建对话不用重填。';
       } else if (official) {
         knt.innerHTML = '<b style="color:var(--amber)">官方直连会遇到跨域限制。</b>'
           + '官方端点不带 CORS 头，浏览器会直接拦下（报 Failed to fetch）。'
-          + '想真正跑通，把上面的走法切到「经本作者中转服务器转发」—— 请求经作者的中转服务器发出，'
+          + '想真正跑通，把上面的走法切到「作者的中转服务器」—— 请求由它发到官方端点，'
           + '不用在本机跑脚本。';
       } else {
         knt.innerHTML = '中转给你的 API Key。按密码处理：输入时遮住，右边可以临时看一眼；'
@@ -6050,28 +6050,26 @@ function TOYLINK_BOOT() {
     var fw = $('#s-tp-forward');
     if (fw) {
       fw.classList.toggle('on', !direct);
-      fw.textContent = direct ? '浏览器直打' : (af ? '经本作者中转服务器转发' : '经本机转发');
+      fw.textContent = direct ? '浏览器直打' : (af ? '作者的中转服务器' : '经本机转发');
     }
     var fn = $('#s-forward-note');
     if (fn) {
-      /* 分支要看"现在真的在走哪条路"（af / toLocal），不能只看"这条路能不能走"（afFree）：
+      /* 分支要看"现在真的在走哪条路"（af / toLocal），不能只看"这条路能不能走"（afUsable）：
          老配置里 transport 还是 relay＋官方地址，那是历史遗留的"经本机转发"，
          不该被说成正在走作者中转 —— 那正是"不静默改道"要守住的地方。 */
       if (af) {
-        fn.innerHTML = '请求经<b>作者的中转服务器</b>转发到官方端点，两端都是 HTTPS，'
+        fn.innerHTML = '请求经上面的<b>「作者的中转服务器」</b>转发到官方端点，两端都是 HTTPS，'
           + '用的是你自己填的官方 API Key —— 不需要本机跑脚本。<br>'
-          + '它是给少量人共用的公开中转：<b>可能限流</b>（忙时返回 429，等几秒再试），'
-          + '请求过程里<b>对方服务器必然接触得到你的 Key 与台词</b>（不持久化，但技术上看得见）。'
           + '介意就切回浏览器直打、或去「中转」填你自己的中转地址。';
       } else if (toLocal) {
         fn.innerHTML = official
           ? '你是本机的转发脚本在打官方端点（旧配置）。不改也没问题；<br>'
-            + '想省掉本机脚本，点这颗切到「经本作者中转服务器转发」，手机上也能用。'
+            + '想省掉本机脚本，点这颗切到「作者的中转服务器」，手机上也能用。'
           : '请求先交给本机脚本（<code>node 工具-转发.js</code>），再由它打你的中转站 —— '
             + '用来绕开"你的中转没开跨域"。';
-      } else if (official && afFree) {
+      } else if (official && afUsable) {
         fn.innerHTML = '<b style="color:var(--amber)">浏览器直打官方端点会被拦</b>（官方不给跨域头，'
-          + '报 <code>Failed to fetch</code>）。点这颗切到「经本作者中转服务器转发」就能跑通，'
+          + '报 <code>Failed to fetch</code>）。点这颗切到「作者的中转服务器」就能跑通，'
           + '不用在本机跑任何脚本，手机上也能用。';
       } else if (official) {
         fn.innerHTML = '<b style="color:var(--amber)">这个官方地址作者中转不认</b> —— '
@@ -6093,12 +6091,17 @@ function TOYLINK_BOOT() {
 
     var note = $('#s-transport-note');
     if (note) {
-      note.innerHTML = official
-        ? '<b>官网直连：</b>地址是官方端点，Key 用你自己的官方 API Key。<br>'
-          + '官方不给跨域头，所以浏览器直打会被拦 —— 要真正跑通，把下面的走法切到'
-          + '<b>「经本作者中转服务器转发」</b>。'
-        : '<b>中转：</b>打你自己填的中转地址，用那个中转给你的令牌。<br>'
+      if (!official) {
+        note.innerHTML = '<b>中转：</b>打你自己填的中转地址，用那个中转给你的令牌。<br>'
           + '这条路不需要官方开放跨域，中转自己开了就行。';
+      } else if (af) {
+        note.innerHTML = '<b>官网直连：</b>地址是官方端点，Key 用你自己的官方 API Key。<br>'
+          + '请求现在经<b>「作者的中转服务器」</b>发出 —— 官方不给跨域头，浏览器直打会被拦。';
+      } else {
+        note.innerHTML = '<b>官网直连：</b>地址是官方端点，Key 用你自己的官方 API Key。<br>'
+          + '官方不给跨域头，所以浏览器直打会被拦 —— 要真正跑通，把下面的走法切到'
+          + '<b>「作者的中转服务器」</b>。';
+      }
     }
 
     var ab = $('#s-tts-authstyle');
@@ -6107,18 +6110,18 @@ function TOYLINK_BOOT() {
     var h = $('#vs-ping-hint');
     if (h) {
       var base;
-      if (official && !direct) {
-        base = afFree
-          ? '走作者中转时，<b>检查</b>只打一次 <code>/tts/health</code>（不带 Key、不带文本），'
-            + '它只说明中转活着，不等于你的 Key、模型、音色可用 —— 真要确认还得点「试听一句」。'
-          : '当前这个官方地址作者中转不认，检查会照直打做，多半会被跨域拦下。';
-      } else if (direct) {
-        base = '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
-          + '另外直连会被浏览器跨域策略拦下 —— 官方的端点一定拦，'
-          + '自有中转那边看它自己有没有开跨域（被拦时错误里写 Failed to fetch）。';
-      } else {
+      if (af) {
+        base = '<b>检查</b>只打一次 <code>/tts/health</code>（不带 Key、不带文本），'
+          + '它只说明中转活着，不等于你的 Key、模型、音色可用 —— 真要确认还得点「试听一句」。';
+      } else if (toLocal) {
         base = '令牌不进聊天记录：它在转发脚本那边（<code>relay-key.txt</code>）。'
           + '面板里这一格留空也能用。';
+      } else if (official) {
+        base = '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
+          + '另外官方端点一定被浏览器跨域拦下 —— 切到「作者的中转服务器」就不用在本机跑脚本。';
+      } else {
+        base = '<b style="color:var(--amber)">令牌会随聊天变量存进这个聊天文件</b>，也会明文出现在页面上。'
+          + '直连通不通取决于<b>你的中转有没有开跨域</b>（被拦时错误里写 Failed to fetch）。';
       }
       h.innerHTML = base + '<br>检查不会真的合成音频，不产生合成费用。';
     }
@@ -6382,7 +6385,7 @@ function TOYLINK_BOOT() {
     VOC.addLog('=== 连通性检查开始（' + chan + '）===', 'hi');
     if (!S.ttsTarget) { say('还没填「合成地址」。'); toast('先填合成地址'); return Promise.resolve(false); }
     if (!direct && isOfficial() && !afReady()) {
-      say('这个官方地址作者中转不认 —— 它只转 Fish 官方与 MiniMax 国际站两个端点。'
+      say('这个官方地址本脚本中转不认 —— 它只转 Fish 官方与 MiniMax 国际站两个端点。'
         + '请把地址改回官方端点，或切到「中转」填你自己的中转地址。');
       toast('作者中转不支持这个地址');
       return Promise.resolve(false);
@@ -6438,14 +6441,14 @@ function TOYLINK_BOOT() {
         return r.text().then(function (tx) {
           var j = null; try { j = JSON.parse(tx); } catch (e) { /* 非 JSON 就走下面的分支 */ }
           if (r.ok && j && j.ok) {
-            say('作者中转在线（' + r.status + ' · ' + ms + 'ms · 当前处理中 ' + (j.active | 0) + '）—— '
+            say('本脚本中转在线（' + r.status + ' · ' + ms + 'ms · 当前处理中 ' + (j.active | 0) + '）—— '
               + '这只能说明中转活着，能不能出声还得点「试听一句」用真实 Key 验一次。', 'ok');
             return true;
           }
           if (r.status === 429) {
-            say('作者中转正忙（429）—— 它是给少量人共用的，等几秒再试，别连着重发。', 'err');
+            say('中转正忙（429）—— 同时合成的路数满了，等几秒再试，别连着重发。', 'err');
           } else {
-            say('作者中转回了 ' + r.status + (tx ? '：' + String(tx).slice(0, 120) : ''), 'err');
+            say('本脚本中转回了 ' + r.status + (tx ? '：' + String(tx).slice(0, 120) : ''), 'err');
           }
           return false;
         }, function () { return false; });
@@ -6478,7 +6481,7 @@ function TOYLINK_BOOT() {
       if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
         say(af ? '连不上作者中转 —— 检查一下网络，或换「浏览器直打 / 填你自己的中转」。'
           : (direct
-            ? '直连被拦下了。多半是中转没开跨域（CORS）—— 用上面的「两种方式都试一次」比一下，或在官网那一档改成「经本作者中转服务器转发」。'
+            ? '直连被拦下了。多半是中转没开跨域（CORS）—— 用上面的「两种方式都试一次」比一下，或在官网那一档改成「作者的中转服务器」。'
             : '连不上转发脚本。先在命令行跑 node 工具-转发.js，确认提示「已就绪」再回来。'), 'err');
       } else {
         say('检查失败：' + msg, 'err');
@@ -6507,7 +6510,7 @@ function TOYLINK_BOOT() {
         var msg = (dOk && rOk) ? '两种方式都通 —— 直连更省事，保持直连即可。'
           : (dOk ? '只有直连通（' + two + '那边没通）。'
             : (rOk ? (two === '经作者中转'
-              ? '只有经作者中转通 —— 直连被跨域拦了。建议切到「经本作者中转服务器转发」。'
+              ? '只有经作者中转通 —— 直连被跨域拦了。建议切到「作者的中转服务器」。'
               : '只有本机转发通 —— 直连被跨域拦了，这就是差别所在。建议切到「经本机转发」。')
               : '两种都不通：先确认合成地址、令牌' + (two === '经本机转发' ? '（或 relay-key.txt）' : '') + '是不是对的。'));
         if (h) h.textContent = msg;
@@ -6810,7 +6813,7 @@ function TOYLINK_BOOT() {
     S.ttsTransport = 'direct';                      // 官网默认浏览器直打（会被跨域拦，文案里已说明）
     paintTransport(); persist();
     toast(afReady()
-      ? '官网直连：已填官方地址。官方不给跨域头，把走法切到「经本作者中转服务器转发」才能跑通'
+      ? '官网直连：已填官方地址。官方不给跨域头，把走法切到「作者的中转服务器」才能跑通'
       : '官网直连：已填官方地址（若被跨域拦下，切到「中转」填你自己的中转地址）', 4600);
   });
   onEl('#s-tp-relay', 'click', function () {
@@ -6839,12 +6842,12 @@ function TOYLINK_BOOT() {
     if (official) {
       if (!afReady()) {
         paintTransport(); persist();
-        toast('这个官方地址作者中转不认（只转 Fish 与 MiniMax 国际站官方端点）', 4600);
+        toast('这个官方地址本脚本中转不认（只转 Fish 与 MiniMax 国际站官方端点）', 4600);
         return;
       }
       S.ttsTransport = 'af';
       paintTransport(); persist();
-      toast('改走「经本作者中转服务器转发」：请求经作者的中转服务器发出，不用本机跑脚本', 4600);
+      toast('改走「作者的中转服务器」：请求由它发到官方端点，不用本机跑脚本', 4600);
       return;
     }
     S.ttsTransport = 'relay';
