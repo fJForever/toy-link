@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.13.42 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.13.43 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -16,7 +16,7 @@ function TOYLINK_BOOT() {
    * 而且自更新本来存在的意义就是"修好下一版"，它自己却先被卡死了。
    * 放到最前之后，只要脚本还能执行到第一行，就能把新版写回脚本库。 */
   (function () {
-    var VERSION = "1.13.42";
+    var VERSION = "1.13.43";
 /* =========================================================
      * 自更新
      *
@@ -234,11 +234,11 @@ function TOYLINK_BOOT() {
    *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
    *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    if (window.__TOYLINK__.version === "1.13.42") {
+    if (window.__TOYLINK__.version === "1.13.43") {
       window.__TOYLINK__.toggle();
       return;
     }
-    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.42"); } catch (e) {}
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.43"); } catch (e) {}
     try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
     try {
       var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
@@ -385,7 +385,7 @@ function TOYLINK_BOOT() {
   }, 2500);
 
   /* ==================== 悬浮球：紫色小 lelo（源码见构建脚本里的 TOY_BALL_RUNTIME） ==================== */
-  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.42";
+  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.43";
   var TK_S = null;   // 主脚本跑起来后指向它的装置状态 S
   var TK_SPRING_LIN = "linear(0, 0.0235, 0.084, 0.1688, 0.2674, 0.3716, 0.4753, 0.574, 0.6646, 0.7453, 0.8153, 0.8743, 0.9228, 0.9614, 0.9911, 1.0131, 1.0285, 1.0384, 1.0439, 1.0459, 1.0453, 1.0429, 1.0392, 1.0348, 1.03, 1.0252, 1.0206, 1.0164, 1.0125, 1.0092, 1.0064, 1.004, 1.0022, 1.0007, 0.9996, 0.9988, 0.9983, 0.998, 0.9979, 0.9979, 1)", TK_SPRING_MS = 728;
   function TOY_BALL_SVG(u) {
@@ -714,7 +714,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.42';
+  var VERSION = '1.13.43';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -6208,7 +6208,12 @@ function TOYLINK_BOOT() {
     /* 走法只剩两条：作者的中转服务器（默认）/ 浏览器直打（备选）。
        「经本机转发」（本机跑 node 工具-转发.js）已经拆掉 —— 手机用户跑不了那个脚本，
        能跑的人也没因此少一步麻烦，留着只会让人点进死路。 */
-    var af = usingAF();                             // 真的在走作者中转
+    /* 通道标签只在"官网那一档"才有意义：
+       「作者的中转服务器」是官网模式专用的转发；切到「中转 api」之后它就不成立了。
+       所以这里必须同时看 official —— 只看 S.ttsTransport 的话，
+       用户从官网切到中转 api 后按钮仍写着「作者的中转服务器」（实际地址已是中转地址），
+       得再点一次才消失。 */
+    var af = usingAF() && official;                 // 真的在走作者中转
     var afUsable = afReady() || !official;          // 作者中转这条通道能不能用
 
     // 令牌说明：按实际通道给对应的话
@@ -6935,24 +6940,31 @@ function TOYLINK_BOOT() {
      下次点回「中转」就还在，不用重填。 */
   onEl('#s-tp-official', 'click', function () {
     var off = OFFICIAL_URL[S.ttsPlatform];
-    if (!off) { toast('这个平台没有固定官方地址，请用「中转」并自己填地址', 3000); return; }
+    if (!off) { toast('这个平台没有固定官方地址，请用「中转 api」并自己填地址', 3000); return; }
     if (isOfficial()) return;                       // 已经是官网，不做无谓的重置
     S.relaySavedTarget = S.ttsTarget || '';         // 把中转地址记下来，切回来时还回去
     S.ttsTarget = off;
     var el = $('#s-tts-target'); if (el) el.value = off;
-    S.ttsTransport = 'direct';                      // 官网默认浏览器直打（会被跨域拦，文案里已说明）
+    /* 通道：切到官网时，如果这个官方地址正好是作者中转认识的那两个，
+       就默认走它 —— 否则新用户看到的是一套"打不通"的配置。
+       「中转 api」那边的直连状态不外传，切回来还是回到浏览器直打。 */
+    S.ttsTransport = (OFFICIAL_URL[S.ttsPlatform] && afReady()) ? 'af' : 'direct';
     paintTransport(); persist();
     toast(afReady()
-      ? '官网直连：已填官方地址。官方不给跨域头，把走法切到「作者的中转服务器」才能跑通'
-      : '官网直连：已填官方地址（若被跨域拦下，切到「中转」填你自己的中转地址）', 4600);
+      ? '官网 api：已填官方地址，请求走「作者的中转服务器」'
+      : '官网 api：已填官方地址（这个地址作者中转不认，只能浏览器直打）', 4600);
   });
   onEl('#s-tp-relay', 'click', function () {
-    if (!isOfficial()) { toast('当前已经是「中转」模式'); return; }
+    if (!isOfficial()) { toast('当前已经是「中转 api」模式'); return; }
     // 回到中转：把上次填的中转地址还回去（没有就留空，等用户填）
     S.ttsTarget = S.relaySavedTarget || '';
     var el = $('#s-tts-target'); if (el) el.value = S.ttsTarget;
+    /* 通道也跟着落回直连：「作者的中转服务器」只服务官网端点，
+       留着 af 会让那颗按钮继续显示它，而地址却是中转地址 —— 状态自相矛盾。
+       切回来要恢复的那档通道另存一份，别把用户在官网选的中转方式弄丢。 */
+    S.ttsTransport = 'direct';
     paintTransport(); persist();
-    toast(S.ttsTarget ? '已切回「中转」' : '已切回「中转」，填上你的中转地址', 3200);
+    toast(S.ttsTarget ? '已切回「中转 api」' : '已切回「中转 api」，填上你自己的中转地址', 3200);
   });
 
   /* 请求怎么发：作者的中转服务器（默认，官网那一档唯一打得通的路）/
@@ -6974,7 +6986,8 @@ function TOYLINK_BOOT() {
       paintTransport(); persist();
       toast(official
         ? '这个官方地址作者中转不认（只转 Fish 与 MiniMax 国际站官方端点）'
-        : '「作者的中转服务器」只转官方端点；第三方中转请直接用「浏览器直打」', 4600);
+        : '「作者的中转服务器」只服务官网端点。中转 api 这一档只有浏览器直打 —— '
+          + '你自己的中转没开跨域的话，让它带上 CORS 响应头即可', 6000);
       return;
     }
     S.ttsTransport = 'af';
@@ -8060,7 +8073,7 @@ function TOYLINK_BOOT() {
   // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板
 
   window.__TOYLINK__ = {
-    version: "1.13.42",
+    version: "1.13.43",
     host: host, root: root, ball: ball, page: PAGE,
     resetLayout: TK_API.resetLayout,   // 面板位置不对劲时，控制台敲 __TOYLINK__.resetLayout()
     open: open, collapse: collapse, toggle: toggle,
