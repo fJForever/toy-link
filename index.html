@@ -1307,10 +1307,6 @@ textarea{
         <button class="mini" id="s-send">generate</button>
       </div>
       <div class="field">
-        <div class="lb"><b>自动建立并绑定世界书</b><small>把装置设定写进一本名为「TOY·LINK 装置设定」的世界书，并挂到当前角色卡。不会覆盖你已有的同名世界书，也不会抢角色卡的主世界书。</small></div>
-        <div class="sw on" id="s-wb"><i></i></div>
-      </div>
-      <div class="field">
         <div class="lb"><b>自动反应</b><small id="s-auto-note">当前：开。装置状态变化会自动触发 AI 生成。</small></div>
         <div class="sw on" id="s-auto"><i></i></div>
       </div>
@@ -1329,6 +1325,17 @@ textarea{
       <div class="field">
         <div class="lb"><b>阶段跃迁必触发</b><small>进入新阶段与临界爆发不受冷却限制。</small></div>
         <div class="sw on" id="s-stage"><i></i></div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>让 AI 一直戴着</b><small>开：脚本每次启动都把这套设定写好、挂到当前角色卡上，内容跟着你的设置更新 —— AI 从此一直知道这台装置存在。<br>关：脚本不再碰它。已经挂上的会留着继续生效，彻底卸载用下面那两颗按钮。</small></div>
+        <div class="sw on" id="s-wb"><i></i></div>
+      </div>
+      <div class="field col">
+        <div class="lb"><b>不玩了？</b><small>AI 认不认识这台装置，全看这张角色卡上有没有挂那本「TOY·LINK 装置设定」。<br>拔出来＝解绑并删除；戴上＝重新写好再挂回去。</small></div>
+        <div class="chips" style="margin-top:0">
+          <button class="chip" id="s-uninstall" type="button">拔出来擦干净</button>
+          <button class="chip" id="s-wear" type="button">重新戴上装置</button>
+        </div>
       </div>
     </section>
 
@@ -1470,7 +1477,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.50';
+  var VERSION = '1.13.56';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -2546,7 +2553,13 @@ textarea{
     hapticFollow: false, // 跟随震动：装置运行时按频率一直震。默认关，理由见 HAP.fire 注释
     audio: false,
     inject: true,
-    manageWb: true,    // 自动把通用设定写进世界书并挂到当前角色卡
+    /* 两个东西管的是两件事，别混：
+         manageWb —— 脚本要不要**继续维护**世界书（建库、挂绑定、跟着设置更新）。开关，默认开。
+         wbOpt    —— 玩家对这张卡表达过"我不装"（点过「拔出来擦干净」）。默认 false，没有面板开关，
+                     它是那颗按钮留下的记录：没有它，下次启动脚本会把书又建回来，按钮就白点了。
+       syncWorldbook 里两者任一为真都不动手：关开关 = 脚本不管了；拔过 = 这张卡不要。 */
+    manageWb: true,
+    wbOpt: false,
     target: 'char',    // char：装置在对方（角色）身上、遥控器在玩家手里；user：装置在玩家身上、遥控器在角色手里；self：装置和遥控器都在玩家这
     holder: '',        // 「对方是谁」：非空时代替角色卡名（世界卡 / 多人卡用）
     dev: 'patch',      // 装置形态：DEV 表里的键
@@ -4788,7 +4801,7 @@ textarea{
   }
 
   function syncWorldbook(silent) {
-    if (!S.manageWb || !BRIDGE.ready) return;
+    if (!S.manageWb || S.wbOpt || !BRIDGE.ready) return;
     var listFn = th('getWorldbookNames');
     var getFn = th('getWorldbook');
     var putFn = th('createOrReplaceWorldbook');
@@ -4835,6 +4848,76 @@ textarea{
       var r = getFn(WB_NAME);
       if (r && r.then) r.then(check, function () { /* noop */ }); else check(r);
     } catch (e) { bind(); }
+  }
+
+  /* ---------- 卸载：把脚本留在用户环境里的痕迹收干净 ----------
+     脚本唯一会碰到"用户资产"的地方就是那本世界书：它以**附加世界书**的形式挂在
+     当前角色卡上（绑定记录在酒馆设置的 charLore 里，按头像文件名索引）。
+     删脚本、删聊天、换卡都动不到它，AI 会一直读得到 —— 这就是"插件删了还在写装置"。
+
+     顺序必须是**先解绑、后删书**：反过来的话绑定会指向一本已经不存在的书。
+
+     两条安全线：
+       · 只动脚本自己建的那本（条目上带 toylink_managed 标记）。用户自己有一本
+         同名的，就只解绑、不删，并在结果里如实说明。
+       · 只动 additional，primary 原样传回去 —— 绝不碰角色卡的主世界书。
+
+     不管的部分：脚本自己命名空间里的变量（toy_*）与 localStorage 配置。
+     那些不含装置描述、AI 读不到，删脚本之后就没人读；重装还得靠它恢复设置。 */
+  function uninstallClean(done) {
+    var listFn = th('getWorldbookNames');
+    var getFn = th('getWorldbook');
+    var delFn = th('deleteWorldbook');
+    var charFn = th('getCharWorldbookNames');
+    var bindFn = th('rebindCharWorldbooks');
+    if (!listFn || !charFn || !bindFn) {
+      done('这个环境没有世界书接口（前端卡或演示模式），没有东西要清');
+      return;
+    }
+    var steps = [];
+
+    var dropBook = function () {
+      var names = [];
+      try { names = listFn() || []; } catch (e) { names = []; }
+      if (names.indexOf(WB_NAME) < 0) { steps.push('世界书已经不在库里'); return done(steps.join('；')); }
+      if (!getFn || !delFn) {
+        steps.push('这个环境删不了世界书，请到世界书面板里手动删除「' + WB_NAME + '」');
+        return done(steps.join('；'));
+      }
+      var decide = function (wb) {
+        var mine = (wb || []).some(function (e) { return e && e.extra && e.extra.toylink_managed; });
+        if (!mine) {
+          steps.push('库里那本「' + WB_NAME + '」不是脚本建的，保留不动（要删请自己确认后动手）');
+          return done(steps.join('；'));
+        }
+        var after = function (ok) {
+          steps.push(ok ? '已删除世界书「' + WB_NAME + '」' : '删世界书没成功，请到世界书面板里手动删');
+          done(steps.join('；'));
+        };
+        try {
+          var p = delFn(WB_NAME);
+          if (p && p.then) p.then(after, function (e) { steps.push('删世界书失败：' + ((e && e.message) || e)); done(steps.join('；')); });
+          else after(true);
+        } catch (e) { steps.push('删世界书失败：' + ((e && e.message) || e)); done(steps.join('；')); }
+      };
+      try {
+        var r = getFn(WB_NAME);
+        if (r && r.then) r.then(decide, function () { steps.push('读世界书失败，跳过删除'); done(steps.join('；')); });
+        else decide(r);
+      } catch (e) { steps.push('读世界书失败，跳过删除'); done(steps.join('；')); }
+    };
+
+    var cur = null;
+    try { cur = charFn('current') || {}; } catch (e) { steps.push('读角色卡绑定失败'); return dropBook(); }
+    var add = cur.additional || [];
+    if (add.indexOf(WB_NAME) < 0) { steps.push('角色卡上没有绑定，跳过'); return dropBook(); }
+    var left = add.filter(function (n) { return n !== WB_NAME; });
+    var afterBind = function () { steps.push('已从角色卡上摘掉绑定'); dropBook(); };
+    try {
+      var p = bindFn('current', { primary: cur.primary || null, additional: left });
+      if (p && p.then) p.then(afterBind, function (e) { steps.push('解绑失败：' + ((e && e.message) || e)); dropBook(); });
+      else afterBind();
+    } catch (e) { steps.push('解绑失败：' + ((e && e.message) || e)); dropBook(); }
   }
 
   // ---- 路线一：写入隐藏楼层 + 触发发言（回复落在酒馆聊天里） ----
@@ -6138,7 +6221,8 @@ textarea{
   // 设置页
   function bindSettings() {
     $('#s-auto').classList.toggle('on', S.auto);
-    $('#s-wb').classList.toggle('on', S.manageWb);
+    var wbSw = $('#s-wb');
+    if (wbSw) wbSw.classList.toggle('on', S.manageWb);
     var sendBtn = $('#s-send');
     if (sendBtn) sendBtn.textContent = (S.sendMode === 'slash' ? 'slash /trigger' : 'generate');
     var bodyBtn = $('#s-body');
@@ -8168,16 +8252,61 @@ textarea{
       ? '改用 /trigger：酒馆原生流程，生成期间会被拦'
       : '改用 generate：不会撞上酒馆的生成锁');
   });
+  /* 「让 AI 一直戴着」：只管"脚本还要不要继续维护它"，不管"现在挂没挂"。
+     关掉不会摘掉已经挂上的那本——要在提示里说透，不然用户会以为关了就等于没了。
+     打开时顺手清掉 wbOpt：用户此刻是明确要它回来，不该还被"这张卡不装"的记录挡着。 */
   $('#s-wb').addEventListener('click', function () {
     S.manageWb = !S.manageWb;
+    if (S.manageWb) {
+      S.wbOpt = false;
+      bindSettings();
+      persist();
+      toast('正在把这套设定写进去…');
+      syncWorldbook(false);
+      setTimeout(bindSettings, 900);
+    } else {
+      bindSettings();
+      persist();
+      toast('脚本不再碰这套设定了。已经挂上的还留着继续生效 —— 要摘掉点「拔出来擦干净」', 6500);
+    }
+  });
+  /* 「拔出来擦干净」：解绑 + 删书 + 记下"这张卡不装"。
+     不可逆，所以走两步 —— 第一下变成确认，再点一下才执行。
+     那颗记录是必须的：不然下次启动脚本又把它建回来，等于白拔。 */
+  var UNINSTALL_TIMER = 0;
+  $('#s-uninstall').addEventListener('click', function () {
+    var b = this;
+    if (b.dataset.arm !== '1') {
+      b.dataset.arm = '1';
+      b.textContent = '再点一下真删';
+      clearTimeout(UNINSTALL_TIMER);
+      UNINSTALL_TIMER = setTimeout(function () { b.dataset.arm = ''; b.textContent = '拔出来擦干净'; }, 5000);
+      return;
+    }
+    b.dataset.arm = '';
+    b.textContent = '正在拔…';
+    S.wbOpt = true;
+    persist();
+    uninstallClean(function (msg) {
+      b.textContent = '拔出来擦干净';
+      toast(msg, 7000);
+      VOC.addLog('拔出来擦干净：' + msg, 'ok');
+    });
+  });
+
+  /* 「重新戴上装置」：清掉"这张卡不装"的记录，顺手打开总闸，把世界书写好挂回去。
+     两颗按钮都常驻，不按当前状态互斥 —— 用户要的是"两个动作都看得见"，
+     点错了给一句话反馈，比按钮变来变去好认。 */
+  $('#s-wear').addEventListener('click', function () {
+    var b = this;
+    S.wbOpt = false;
+    S.manageWb = true;   // 手动装 = 明确要它，总闸一并打开
     bindSettings();
     persist();
-    if (S.manageWb) {
-      toast('正在写入装置设定…');
-      syncWorldbook(false);
-    } else {
-      toast('已停止自动管理，世界书保持现状');
-    }
+    b.textContent = '正在戴…';
+    toast('正在把这套设定写进去…');
+    syncWorldbook(false);
+    setTimeout(function () { b.textContent = '重新戴上装置'; bindSettings(); }, 1200);
   });
   $('#s-reset').addEventListener('click', function () { S.resetOnPeak = !S.resetOnPeak; bindSettings(); persist(); });
   $('#s-recfreq').addEventListener('click', function () { S.recFreq = !S.recFreq; bindSettings(); persist(); });
@@ -8308,6 +8437,9 @@ textarea{
       toy_out_warm: S.voiceWarm,
       toy_out_warmset: !!S.warmTouched,   // 一起写进来：lsSave 是整份覆盖，漏了它会把预热标记冲掉
       toy_out_src: S.voiceSrc,
+      /* 「这张卡我不装装置设定」是跨对话的意愿，不是聊天内的临时状态：
+         存聊天变量的话，换个聊天它就被重置，世界书又自己长回来。 */
+      toy_out_wbopt: S.wbOpt,
       toy_out_haptap: S.hapticTap,
       toy_out_hapfol: S.hapticFollow,
       toy_out_audio: S.audio,
@@ -8332,6 +8464,7 @@ textarea{
       toy_cfg_recfreq: S.recFreq,
       toy_cfg_freeze: S.freezeOnGen,
       toy_cfg_managewb: S.manageWb,
+      toy_cfg_wbopt: S.wbOpt,
       toy_cfg_sendmode: S.sendMode,
       toy_cfg_target: S.target,
       toy_cfg_holder: S.holder,
@@ -8429,6 +8562,8 @@ textarea{
        老存档里存的是旧默认 true，直接用会替用户继续花额度，所以那种情况落回新默认 false。 */
     if (g.toy_out_warmset === true) { S.warmTouched = true; if (typeof g.toy_out_warm === 'boolean') S.voiceWarm = g.toy_out_warm; }
     if (VOICE_SRC_ORDER.indexOf(g.toy_out_src) >= 0) S.voiceSrc = g.toy_out_src;
+    /* 「这张卡我不装装置设定」记在全局：它是意愿，不是聊天内的临时状态。 */
+    if (typeof g.toy_out_wbopt === 'boolean') S.wbOpt = g.toy_out_wbopt;
     if (typeof g.toy_out_haptap === 'boolean') S.hapticTap = g.toy_out_haptap;
     if (typeof g.toy_out_hapfol === 'boolean') S.hapticFollow = g.toy_out_hapfol;
     if (typeof g.toy_out_audio === 'boolean') S.audio = g.toy_out_audio;
@@ -8455,6 +8590,7 @@ textarea{
     if (typeof v.toy_cfg_recfreq === 'boolean') S.recFreq = v.toy_cfg_recfreq;
     if (typeof v.toy_cfg_freeze === 'boolean') S.freezeOnGen = v.toy_cfg_freeze;
     if (typeof v.toy_cfg_managewb === 'boolean') S.manageWb = v.toy_cfg_managewb;
+    if (typeof v.toy_cfg_wbopt === 'boolean') S.wbOpt = v.toy_cfg_wbopt;
     if (v.toy_cfg_sendmode === 'slash' || v.toy_cfg_sendmode === 'generate') S.sendMode = v.toy_cfg_sendmode;
     if (v.toy_cfg_target === 'user' || v.toy_cfg_target === 'char' || v.toy_cfg_target === 'self') S.target = v.toy_cfg_target;
     if (typeof v.toy_cfg_holder === 'string') S.holder = v.toy_cfg_holder.trim().slice(0, 24);
