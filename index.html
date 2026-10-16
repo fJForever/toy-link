@@ -1470,7 +1470,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.49';
+  var VERSION = '1.13.50';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -1891,6 +1891,13 @@ textarea{
         '· 散在各段里，随动作和反应一起往外漏，不要堆成一段连续对话。',
         '· 谁在说话就写谁的：{{char}} 的台词，以及被作用的人不自主漏出来的气音、闷哼、半句没说完的话，都算。',
         '· 只有引号里的话会被念出来。心里想的、动作神态、环境描写都不算数，写再多也变不成声音。',
+        '',
+        '【用断句写呼吸，不要用形容词写呼吸】',
+        '· 喘、哽、说不下去，都让标点和重复的字自己表现出来：写"不……不行……你、你慢点"，'
+          + '不要写"她上气不接下气地说了声不行" —— 后者念出来是平的，前者才有停顿。',
+        '· 一句对白只装一个情绪。又求饶又撒娇又骂人的长句，念出来会糊成一团。',
+        '· 对白紧跟着动作写：谁动到哪一下、这时候嘴里漏出什么，连着写；'
+          + '不要先铺完一大段描写，最后在段末堆一串引号。',
         '',
         '不要写结论句。不写"{{char}}很舒服""{{char}}受不了了""{{char}}彻底沦陷了"。',
         '要写能让人自己得出这个结论的东西：抓住扶手的指节、断在喉咙里的半句话、脚背绷直的弧度。'
@@ -3698,22 +3705,49 @@ textarea{
     buzz: '只出声效、不念台词。这一档还没在真机上听过，慎用。'
   };
 
-  /* 分档情绪标记：同一个人在不同阶段，标记要跟着走，
-     否则五档听起来会像一个样。每条 1-2 个，留出叠加余地。 */
+  /* 分档情绪标记：同一个人在不同阶段，标记要跟着走，否则五档听起来会像一个样。
+     lead = 句首的情绪标记，tail = 句尾的呼吸收口（可能取到空串 = 不补）。
+
+     这套结构照着《参考-Fish语音提示词技巧.md》改过：
+       · 一条只表达**一种主要情绪**，所以 lead 一律只给一个 —— 以前有
+         [whispering][confident]、[sobbing][gasping] 这种英文叠英文的写法，
+         那是材料里明说会"像机械拼接"的堆法。
+       · 末尾补一个**呼吸动作**收口（[inhale] 吸气 / [exhale] 呼气 / [sigh] 叹息），
+         对应材料里 "…[呼吸或声音标签]" 那一段。以前整条只在句首挂一个前缀，
+         后半句（往往是情绪最高的一段）完全没有控制。
+       · tail 的候选里每档都留了空串：不是每条都补呼吸，连着两三句都喘会听不出层次，
+         而且万一某个呼吸标记不被这家模型支持、会被念出英文单词，也只影响到一部分条目。 */
   var VOICE_MARK = {
+    /* 被作用（呻吟）：从"还能说话"一路走到"只剩气音" */
     moan: [
-      ['[气声]'], ['[panting]'], ['[panting][气声]'],
-      ['[gasping][颤抖]'], ['[sobbing][gasping]']
+      { lead: ['[气声]'], tail: ['', '', '[inhale]'] },
+      { lead: ['[panting]'], tail: ['', '[inhale]', '[exhale]'] },
+      { lead: ['[panting]', '[气声]'], tail: ['', '[inhale]', '[exhale]'] },
+      { lead: ['[gasping]'], tail: ['', '[inhale]', '[exhale]'] },
+      { lead: ['[sobbing]'], tail: ['', '[exhale]', '[sigh]'] }
     ],
+    /* 遥控器在对方手里：这个是操控方，情绪往上走而不是散掉 */
     tease: [
-      ['[soft tone]'], ['[calm]'], ['[chuckling]'],
-      ['[confident][低沉]'], ['[whispering][confident]']
+      { lead: ['[soft tone]'], tail: ['', '', '[sigh]'] },
+      { lead: ['[calm]'], tail: ['', '[exhale]'] },
+      { lead: ['[chuckling]'], tail: ['', '[sigh]'] },
+      { lead: ['[confident][低沉]'], tail: ['', '[exhale]'] },
+      { lead: ['[whispering]'], tail: ['', '[sigh]'] }
     ],
+    /* 自己玩：核心是"不能出声"，所以标记偏向压住气音 */
     self: [
-      ['[气声]'], ['[whispering]'], ['[panting][whispering]'],
-      ['[gasping]'], ['[sobbing][gasping]']
+      { lead: ['[气声]'], tail: ['', '', '[inhale]'] },
+      { lead: ['[whispering]'], tail: ['', '[inhale]'] },
+      { lead: ['[panting]'], tail: ['', '[inhale]', '[exhale]'] },
+      { lead: ['[gasping]'], tail: ['', '[inhale]', '[exhale]'] },
+      { lead: ['[sobbing]'], tail: ['', '[exhale]', '[sigh]'] }
     ],
-    beg: ['[sighing]', '[soft tone]', '[calm]', '[soft tone]']
+    beg: [
+      { lead: ['[sighing]'], tail: ['', '', '[exhale]'] },
+      { lead: ['[soft tone]'], tail: ['', ''] },
+      { lead: ['[calm]'], tail: ['', '[exhale]'] },
+      { lead: ['[soft tone]'], tail: ['', '[sigh]'] }
+    ]
   };
 
   /* 台词库。每条按"念出来约十到十五秒"写：拟声起头、碎句延展、省略号和破折号撑开停顿，
@@ -3816,15 +3850,32 @@ textarea{
     if (S.target === 'self') return 'self';    // 都在玩家自己身上 → 没有别人，只有自己的气音
     return 'moan';                             // char 档 → 被作用的是角色
   }
-  function voiceMark(kind, stage) {
-    if (kind === 'beg') {
-      var b = VOICE_MARK.beg;
-      return b[Math.floor(Math.random() * b.length)];
-    }
+  /* 这一档的首尾标记。kind='beg' 走扁平表；其余按 stage 取第 i 档。 */
+  function voiceAffix(kind, stage) {
     var arr = VOICE_MARK[kind] || VOICE_MARK.moan;
+    if (kind === 'beg') arr = VOICE_MARK.beg;
     var i = clamp((stage || 1) - 1, 0, arr.length - 1);
     var pool = arr[i] || arr[0];
-    return pool[Math.floor(Math.random() * pool.length)];
+    var lead = (pool && pool.lead) ? pool.lead : ['[气声]'];
+    var tail = (pool && pool.tail) ? pool.tail : [''];
+    return {
+      lead: lead[Math.floor(Math.random() * lead.length)],
+      tail: tail[Math.floor(Math.random() * tail.length)]
+    };
+  }
+  /* 只要句首那一段的旧接口（正文抽出来的对白与 AI 写的语音字段都用它）——
+     那两条路的文本不是我们写的，末尾硬塞呼吸标记会显得突兀。 */
+  function voiceMark(kind, stage) { return voiceAffix(kind, stage).lead; }
+
+  /* 给一条库里的台词配好首尾标记。句首是情绪，句尾是呼吸收口。
+     已经带标记的不再叠（AI 给的台词通常自带）；末尾已经有标记的也不补。 */
+  function voiceTailored(kind, stage, line) {
+    var a = voiceAffix(kind, stage);
+    var s = String(line || '').trim();
+    if (!s) return s;
+    if (!hasMark(s)) s = a.lead + ' ' + s;
+    if (a.tail && !/\[[^\]]*\]\s*$/.test(s)) s = s + ' ' + a.tail;
+    return s;
   }
   /* 名字填充：台词库里的占位符换成实际的人名 */
   function fillName(s) {
@@ -3832,14 +3883,14 @@ textarea{
       .split('__W__').join(wearerName(true))
       .split('__H__').join(holderName(true));
   }
-  /* 取一条现成台词，**带上情绪标记**（标记在最前，官方说句首最有效） */
+  /* 取一条现成台词，配好首尾标记（情绪在句首，呼吸收口在句尾） */
   function libPick(kind, stage) {
     var arr = VOICE_LIB[kind] || VOICE_LIB.moan;
     var i = clamp((stage || 1) - 1, 0, arr.length - 1);
     var pool = arr[i];
     if (!pool || !pool.length) { pool = VOICE_LIB.moan[0]; }
     var line = pool[Math.floor(Math.random() * pool.length)].t;
-    return fillName(voiceMark(kind, stage) + ' ' + line);
+    return fillName(voiceTailored(kind, stage, line));
   }
   /* 已经带标记就别再叠一层（AI 给的台词通常自带） */
   function hasMark(s) { return /^\s*\[[^\]]+\]/.test(String(s || '')); }
@@ -3991,12 +4042,12 @@ textarea{
     if (kind === 'beg') {
       var b = VOICE_LIB.beg;
       i = clamp(i | 0, 0, b.length - 1);
-      return fillName(voiceMark('beg', stage) + ' ' + b[i].t);
+      return fillName(voiceTailored('beg', stage, b[i].t));
     }
     var pool = libStagePool(kind, stage);
     if (!pool.length) pool = VOICE_LIB.moan[0];
     i = clamp(i | 0, 0, pool.length - 1);
-    return fillName(voiceMark(kind, stage) + ' ' + pool[i].t);
+    return fillName(voiceTailored(kind, stage, pool[i].t));
   }
 
   /* ---------- 台词从哪来 ----------
@@ -4992,7 +5043,8 @@ textarea{
        而它一旦被念出来，玩家听到的就是一句莫名其妙的档位名。 */
     '角色说出口的话一律用「」包住，一句一行；引号里只放嘴上说的话，'
       + '不放动作神态、不放模式名（暴雨、脉冲这类）、不放嗡鸣与电流声。',
-    '这一轮正文里角色说出口的话写 4 到 6 句，每句 10-25 字 —— 引号里的每一句都会被念成声音。'
+    '这一轮正文里角色说出口的话写 4 到 6 句，每句 10-25 字 —— 引号里的每一句都会被念成声音。',
+    '对白里的喘息靠标点和断字表现（"不……不行……"），不要用"她上气不接下气地说"这类形容。'
   ].join('\n');
 
   function cleanReply(text) {
@@ -5046,9 +5098,12 @@ textarea{
         '· 语音要写成 **2 到 3 行**，每行都是一句能念出来的话，**每行开头都要带情绪标记**。',
         '· 每行 **35-48 字**，长度照着下面正确例子来 —— 太短会"啊……"一下就没了，'
           + '太长会变成朗读。用省略号、破折号把句子断开，让它在气声里一段段漏出来。',
-        '· 标记用方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] '
-          + '[nervous] [pleased] [chuckling] [sighing]）或中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；'
-          + '一行最多叠 3 个。',
+        '· 标记用方括号，放在它要管的那句话**前面**。可以写英文固定标记（[panting] [gasping] [sobbing] '
+          + '[whispering] [soft tone] [nervous] [pleased] [chuckling] [sighing]）'
+          + '或中文描述（[气声] [颤抖] [压低的声音] [黏腻]）。',
+        '· 一句只给**一个**情绪标记，别叠。连着挂两个（[whispering][confident] 这种）念出来像机械拼接。',
+        '· 想让气口更明显，就在句尾补一个呼吸标记：[inhale] 吸气、[exhale] 呼气、[sigh] 叹息。'
+          + '不必每句都补，两三句里有一句就够 —— 句句都在喘反而听不出层次。',
         '· 三行之间要有推进：从**试探**到**说透**，最后一句可以是**退让、打岔或撒娇**收尾。',
         '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、'
           + '压在喉咙里的碎音。**不要写动作、不要写旁白、不要用括号包住叙述** ——'
@@ -5062,10 +5117,10 @@ textarea{
           + '不要出现"她/他/它/自己"，也不要写"咬着牙""撑着""忍不住""慢慢"这种描写的动作 ——'
           + '一句台词是关于"我"和"你"的，不是关于第三个人在做什么的。',
         '· 反例（这些都会被丢掉，别写）：[喘息] 嗡嗡声还在继续 ／ [气声] 她咬着牙想维持住 ／ [气声] 撩拨',
-        '· 正确例子（照这个**长度和格式**写：2-3 行，每行开头都是方括号标记）：',
-        '　[soft tone][whispering] 你怎么还没睡呀……我都醒了有一会儿了，听着你在那边翻身……',
-        '　[inhale] 我只是……有点想你了。也没别的事，就是忽然想听听你的声音，没打扰你吧？',
-        '　[short pause][chuckling] 好啦，别笑我……我说完这句就不说了，你先去忙你的……'
+        '· 正确例子（照这个**长度和格式**写：情绪标记在句首，呼吸标记在句尾，不必每句都补）：',
+        '　[soft tone] 你怎么还没睡呀……我都醒了有一会儿了，听着你在那边翻身……[sigh]',
+        '　我只是……有点想你了。也没别的事，就是忽然想听听你的声音，没打扰你吧？[inhale]',
+        '　[chuckling] 好啦，别笑我……我说完这句就不说了，你先去忙你的……'
       ]);
     }
     L.push('· 正文里说出口的话写 4 到 6 句，每句 10-25 字，用「」包住 —— '
