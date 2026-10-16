@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.13.46 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.13.47 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -16,7 +16,7 @@ function TOYLINK_BOOT() {
    * 而且自更新本来存在的意义就是"修好下一版"，它自己却先被卡死了。
    * 放到最前之后，只要脚本还能执行到第一行，就能把新版写回脚本库。 */
   (function () {
-    var VERSION = "1.13.46";
+    var VERSION = "1.13.47";
 /* =========================================================
      * 自更新
      *
@@ -234,11 +234,11 @@ function TOYLINK_BOOT() {
    *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
    *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    if (window.__TOYLINK__.version === "1.13.46") {
+    if (window.__TOYLINK__.version === "1.13.47") {
       window.__TOYLINK__.toggle();
       return;
     }
-    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.46"); } catch (e) {}
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.47"); } catch (e) {}
     try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
     try {
       var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
@@ -395,7 +395,7 @@ function TOYLINK_BOOT() {
   }, 2500);
 
   /* ==================== 悬浮球：紫色小 lelo（源码见构建脚本里的 TOY_BALL_RUNTIME） ==================== */
-  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.46";
+  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.47";
   var TK_S = null;   // 主脚本跑起来后指向它的装置状态 S
   var TK_SPRING_LIN = "linear(0, 0.0235, 0.084, 0.1688, 0.2674, 0.3716, 0.4753, 0.574, 0.6646, 0.7453, 0.8153, 0.8743, 0.9228, 0.9614, 0.9911, 1.0131, 1.0285, 1.0384, 1.0439, 1.0459, 1.0453, 1.0429, 1.0392, 1.0348, 1.03, 1.0252, 1.0206, 1.0164, 1.0125, 1.0092, 1.0064, 1.004, 1.0022, 1.0007, 0.9996, 0.9988, 0.9983, 0.998, 0.9979, 0.9979, 1)", TK_SPRING_MS = 728;
   function TOY_BALL_SVG(u) {
@@ -724,7 +724,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.46';
+  var VERSION = '1.13.47';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -5487,6 +5487,12 @@ function TOYLINK_BOOT() {
         ? '装置改为戴在玩家自己身上，遥控器也在玩家自己手里'
         : '装置改为作用在 ' + charName() + ' 身上，遥控器在玩家手里');
     syncWorldbook(true);   // 世界书要按新模式整本重写
+    /* 「台词分类」下拉要跟着档位走。
+       起因：这个下拉在初始化时设过 voiceKind() 就再没同步过 —— 档位切到「TA 拿着遥控器」
+       之后它还停在「呻吟」，于是试听走的是呻吟台词 + 主音色，
+       让「TA 拿着遥控器时用另一个音色」看起来完全没生效。
+       注意别打断初始化：initLibPicker 比这个函数晚跑，那时元素还不存在，直接跳过即可。 */
+    syncLibKind();
     HAP.tap(t === 'user' ? 30 : 22);
     if (notify) {
       toast(t === 'user'
@@ -6571,10 +6577,24 @@ function TOYLINK_BOOT() {
       k.appendChild(o);
     });
     k.value = voiceKind();          // 默认跟着当前档位走，跳过去就能试当下这一档
+    // 切换档位时的同步走 syncLibKind()（见 setTarget），这里只管首次初始化
     if (libSelGet().kind !== k.value) k.value = 'moan';
     paintLibStage();
     paintLibLines();
   })();
+
+  /* 把「台词分类」下拉对齐到当前档位。切换作用对象时调用（见 setTarget）。
+     初始化时该元素还不存在，所以先判空。 */
+  function syncLibKind() {
+    var k = $('#s-voice-kind');
+    if (!k) return;
+    var want = voiceKind();
+    if (k.value === want) return;
+    k.value = want;
+    paintLibStage();
+    paintLibLines();
+    paintLibNote();
+  }
 
   onEl('#s-voice-kind', 'change', function () { paintLibStage(); paintLibLines(); });
   onEl('#s-voice-stage', 'change', function () { paintLibLines(); });
@@ -8140,7 +8160,7 @@ function TOYLINK_BOOT() {
   // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板
 
   window.__TOYLINK__ = {
-    version: "1.13.46",
+    version: "1.13.47",
     host: host, root: root, ball: ball, page: PAGE,
     resetLayout: TK_API.resetLayout,   // 面板位置不对劲时，控制台敲 __TOYLINK__.resetLayout()
     open: open, collapse: collapse, toggle: toggle,

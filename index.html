@@ -1470,7 +1470,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.46';
+  var VERSION = '1.13.47';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -6233,6 +6233,12 @@ textarea{
         ? '装置改为戴在玩家自己身上，遥控器也在玩家自己手里'
         : '装置改为作用在 ' + charName() + ' 身上，遥控器在玩家手里');
     syncWorldbook(true);   // 世界书要按新模式整本重写
+    /* 「台词分类」下拉要跟着档位走。
+       起因：这个下拉在初始化时设过 voiceKind() 就再没同步过 —— 档位切到「TA 拿着遥控器」
+       之后它还停在「呻吟」，于是试听走的是呻吟台词 + 主音色，
+       让「TA 拿着遥控器时用另一个音色」看起来完全没生效。
+       注意别打断初始化：initLibPicker 比这个函数晚跑，那时元素还不存在，直接跳过即可。 */
+    syncLibKind();
     HAP.tap(t === 'user' ? 30 : 22);
     if (notify) {
       toast(t === 'user'
@@ -7317,10 +7323,24 @@ textarea{
       k.appendChild(o);
     });
     k.value = voiceKind();          // 默认跟着当前档位走，跳过去就能试当下这一档
+    // 切换档位时的同步走 syncLibKind()（见 setTarget），这里只管首次初始化
     if (libSelGet().kind !== k.value) k.value = 'moan';
     paintLibStage();
     paintLibLines();
   })();
+
+  /* 把「台词分类」下拉对齐到当前档位。切换作用对象时调用（见 setTarget）。
+     初始化时该元素还不存在，所以先判空。 */
+  function syncLibKind() {
+    var k = $('#s-voice-kind');
+    if (!k) return;
+    var want = voiceKind();
+    if (k.value === want) return;
+    k.value = want;
+    paintLibStage();
+    paintLibLines();
+    paintLibNote();
+  }
 
   onEl('#s-voice-kind', 'change', function () { paintLibStage(); paintLibLines(); });
   onEl('#s-voice-stage', 'change', function () { paintLibLines(); });
