@@ -1164,7 +1164,7 @@ textarea{
       </div>
       <div class="field">
         <div class="lb"><b>台词来源</b><small id="s-voiceai-note"></small></div>
-        <button class="mini" id="s-voiceai">台词库</button>
+        <button class="mini" id="s-voiceai">正文对白</button>
       </div>
       <div class="chips">
         <button class="chip" id="c-save-voice">保存音色与参数</button>
@@ -1470,7 +1470,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.47';
+  var VERSION = '1.13.48';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -1876,6 +1876,14 @@ textarea{
         '· 落实到程度——抖是轻微的还是压不住的；喘是深一口，还是连着几下短抽。',
         '· 落实到应对——在忍、在藏、在转移话题，还是已经放弃了。',
         '· 环境跟着动——碰倒了什么、布料蹭出什么声音、屋子里的嗡鸣什么时候换了节奏。',
+        '',
+        '【对白单独标出来——引号里的每一句都会被念成声音】',
+        '· 谁说的话就用「」包住，一句一行。引号外面的字是给人读的，引号里面的字是要被念出来的。',
+        '· 引号里只放嘴上说出口的话。动作、神态、心里想的，都写在引号外面。',
+        '· 引号里不许放别的东西：模式名（脉冲、潮汐、心跳、渐强、乱流、撩拨、暴雨、临界、冲刺）、'
+          + '频率、强度、阶段名，以及装置与环境的声音（嗡鸣、电流声、马达声）都不能进引号。'
+          + '写"他把档位拨到暴雨"，不要写"他把档位拨到「暴雨」"；写"嗡鸣声又密了一层"，不要给它加引号。',
+        '· 反过来，{{char}} 这一轮真正说出口的话要一句不漏地写进引号里——漏掉的那句，装置就没法念。',
         '',
         '不要写结论句。不写"{{char}}很舒服""{{char}}受不了了""{{char}}彻底沦陷了"。',
         '要写能让人自己得出这个结论的东西：抓住扶手的指节、断在喉咙里的半句话、脚背绷直的弧度。'
@@ -2546,7 +2554,11 @@ textarea{
     voiceVol: 80,        // 语音音量 %
     voiceAuto: true,     // 面板拿到新心声时自动播放
     voiceLog: true,      // 控制台打印语音失败原因，排错用
-    voiceAI: false,      // 台词交给 AI 生成（随正文一起，不多花一次额度）；关掉则用本地台词库
+    /* 台词从哪来。三档互斥，各走各的路，不再互相兜底 ——
+       body：只念正文里引号包住的对白，正文没有就不出声（听到的 = 读到的）
+       ai  ：只念读数里的「语音」字段（AI 随正文一起写，不多花一次额度）
+       lib ：只用本地台词库（零费用零延迟，按阶段与对象取） */
+    voiceSrc: 'body',
     voiceWarm: false,    // 启动装置时预热固定音集 —— 会真的发 5 次合成请求（花额度），所以默认关
     warmTouched: false,  // 用户是否亲手改过"启动时预热"。没碰过的人升级后走新默认（关）
     ttsProxy: '',                                // 已废弃：本机转发拆掉后不再使用（留着这个键免得老存档读取报错）
@@ -3980,59 +3992,95 @@ textarea{
     return fillName(voiceMark(kind, stage) + ' ' + pool[i].t);
   }
 
-  /* 决定"说哪一句、用什么音色口气"。
+  /* ---------- 台词从哪来 ----------
   
      两条内容严格分开，别互相污染：
        · 界面上的文字说明（心声）—— 给眼睛看的，"低下头，呼吸乱了一拍。"这种
        · 要念出来的台词（语音）—— 给耳朵听的，带情绪标记，能直接进 TTS
   
-     优先顺序（正文对白排在最前，这样"听到的"和"读到的"是同一句话）：
-       1. 正文里引号包住的对白   ← 新增：正文有对白就用它，视听一致
-       2. AI 在读数里明写的语音字段
-       3. 台词库（自动配情绪标记）—— 正文没有对白时的兜底
-     force='beg' 时走请求停止那一支。 */
+     三档互斥，**不再互相兜底**：选哪一档就只认那一档，取不到就这一轮不出声。
+     以前是无条件"正文对白 > 读数字段 > 台词库"三级回落，于是选了「AI 生成」
+     却因为 AI 没写语音字段而念出台词库、选了「正文对白」却因为正文没引号
+     而念出台词库 —— 玩家听到的每一条都找不到出处，也就是"和正文对不上"。
+     取不到就不发声，比凭空冒一句别人的话诚实。 */
+  /* 台词来源三档。顺序就是按钮点一下的切换顺序：正文 → AI → 台词库。 */
+  var VOICE_SRC_LABEL = { body: '正文对白', ai: 'AI 生成', lib: '台词库' };
+  var VOICE_SRC_ORDER = ['body', 'ai', 'lib'];
+  function voiceSrcOf() { return VOICE_SRC_ORDER.indexOf(S.voiceSrc) >= 0 ? S.voiceSrc : 'body'; }
+
+  /* 这一条用哪个音色：只看此刻"谁在说话"，与台词内容无关。
+     两套音色都可选：默认共用一个；填了「TA 拿着遥控器时的音色」就分开用 ——
+     那时 ta 是操控方，口气与呻吟本来就不同。 */
+  function voicePick() {
+    var kind = voiceKind();
+    return (kind === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice;
+  }
+
   function voiceFor(voiceLine, stage, force, body) {
     var kind = (force === 'beg') ? 'beg' : voiceKind();
-    /* 两套音色是可选的：
-       默认共用同一个（同一个人不同处境下的声音）；
-       填了「TA 拿着遥控器时的音色」就分开用 —— 那时 ta 是操控方，口气与呻吟本来就不同。 */
-    var voice = (kind === 'tease' && S.ttsVoiceTease) ? S.ttsVoiceTease : S.ttsVoice;
+    var voice = voicePick();
     var out = { text: '', kind: kind, voice: voice };
+    var src = voiceSrcOf();
 
-    // 1) 正文里的对白：有引号、多行、按句截断、丢掉叙述 —— 只要它像台词就优先
-    var spoken = extractSpeech(String(body || ''), kind, stage);
-    if (spoken && voiceish(spoken)) {
-      out.text = spoken;
-      out.fromBody = true;
+    // 档三：只用本地台词库
+    if (src === 'lib') {
+      out.text = libPick(kind, stage);
       return out;
     }
-    // 2) AI 在读数里明写的语音字段。
-    //    先清洗：读数里的枚举值（"暴雨"这种模式名）偶尔会被 AI 顺手塞进来，
-    //    不清的话它会被原样念出来，而正文里根本没有这句话。
-    var given = cleanVoiceText(fillName(String(voiceLine || '').trim()));
-    if (given && voiceish(given)) {
-      out.text = hasMark(given) ? given : (voiceMark(kind, stage) + ' ' + given);
+    // 档二：只用读数里 AI 明写的「语音」字段。
+    //      先清洗：读数里的枚举值（"暴雨"这种模式名）偶尔会被 AI 顺手塞进来，
+    //      不清的话它会被原样念出来，而正文里根本没有这句话。
+    if (src === 'ai') {
+      var given = cleanVoiceText(fillName(String(voiceLine || '').trim()));
+      if (given && voiceish(given)) {
+        out.text = hasMark(given) ? given : (voiceMark(kind, stage) + ' ' + given);
+      } else if (voiceLine) {
+        try { console.log('[TOY·LINK 语音] 读数里的「语音」字段被判定为噪音，已丢弃：「' + String(voiceLine).trim().slice(0, 40) + '」'); } catch (e) { /* noop */ }
+      }
       return out;
     }
-    if (voiceLine && !given) {
-      try { console.log('[TOY·LINK 语音] 读数里的「语音」字段被判定为读数串场，已丢弃：「' + String(voiceLine).trim().slice(0, 40) + '」'); } catch (e) { /* noop */ }
-    }
-    // 3) 退回台词库：按档位取现成的，自动配情绪标记
-    out.text = libPick(kind, stage);
+    // 档一：只念正文里引号包住的对白。正文没有对白 → 空手而归，这一轮不出声。
+    out.text = extractSpeech(String(body || ''), kind, stage);
+    if (out.text) out.fromBody = true;
     return out;
   }
 
+  /* 正文对白的取用上限。以前写死"最多 3 句"，正文里有四五句对白时后面的全丢了 ——
+     改成按**总字数**收口：句子数放宽到 6，总长超过 150 字才停。
+     这样一轮里角色说的每句话基本都在，又不会把整段正文念成朗读。 */
+  var BODY_SPEECH_MAX_LINES = 6;
+  var BODY_SPEECH_BUDGET = 150;
+
+  /* 正文里的一段引号内容能不能念。
+     只拦"确定不可能是台词"的：读数枚举值（暴雨、脉冲…）、读数里的字段名、
+     环境音与装置声、以第三人称描写动作的旁白。真正的对白一律放行 ——
+     这一档的承诺就是"正文里读得到的对白都听得到"，宁可多念一句也不能漏掉角色的话。
+     没有这道过滤时，正文里一句「他把档位拨到「暴雨」」就会让装置念出「暴雨」——
+     面板上那句 [气声] 暴雨 就是从这来的。 */
+  function bodySpeechKeep(seg) {
+    var s = String(seg || '').trim();
+    if (!s) return false;
+    if (looksLikeReadout(s)) return false;                     // 整段就是个档位名/枚举值
+    var stripped = dropReadoutSeg(stripFieldTail(s));
+    if (realWords(s) && noRealWord(stripped)) return false;    // 剥掉档位名后什么都不剩
+    if (looksLikeAmbient(s)) return false;                     // "嗡嗡声还在继续"
+    if (looksLikeNarration(s)) return false;                   // "她咬着牙想维持住"
+    return true;
+  }
+
   /* 从正文里抽对白：只取引号包住的内容（「」『』“”""），
-     按句号/问号/感叹号切句，每句截到 24 字，最多 3 句拼成多行。
-     正文没有对白时返回 ''，交给上层回退。 */
+     按句号/问号/感叹号切句，每句截到 32 字，最多 6 句、总长 150 字。
+     正文没有对白时返回 '' —— 上层不会兜底，这一轮就不出声。 */
   function extractSpeech(body, kind, stage) {
     var src = String(body || '');
     if (!src) return '';
     var out = [], re = /[「『“"]([^」』”"]{1,100})[」』”"]/g, m;
-    while ((m = re.exec(src)) !== null && out.length < 3) {
+    var budget = BODY_SPEECH_BUDGET;
+    while ((m = re.exec(src)) !== null && out.length < BODY_SPEECH_MAX_LINES && budget > 0) {
       var seg = m[1].replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
       seg = seg.replace(/^[，、,。.；;：:\s]+|[，、,。.；;：:\s]+$/g, '');
       if (!seg) continue;
+      if (!bodySpeechKeep(seg)) continue;   // 引号里未必是对白：模式名、环境音、旁白都在这儿拦掉
       // 一句太长就按句末切，取头一两句
       if (seg.replace(/\[[^\]]*\]\s*/g, '').length > 24) {
         // 不用后行断言 (?<=…)：iOS Safari 16.4 以前不认，整个脚本会在解析阶段报错、一行都不跑
@@ -4044,8 +4092,10 @@ textarea{
         }
         seg = acc || seg.slice(0, 24);
       }
+      if (!bodySpeechKeep(seg)) continue;   // 截断后可能只剩个档位名
       // 原文一般不带标记，补一个，语气才跟着当前处境走
       if (!hasMark(seg)) seg = voiceMark(kind, stage) + ' ' + seg;
+      budget -= seg.replace(/\[[^\]]*\]\s*/g, '').length;
       out.push(seg);
     }
     return out.join('\n');
@@ -4926,7 +4976,12 @@ textarea{
     '【输出格式】只输出角色这一轮的动作神态与对白本身。',
     '不要输出任何标签、注释、分隔线、标题、进度标记、草稿或思考过程；',
     '诸如 <!-- -->、<content>、<ts>、### 这类东西一律不要出现在输出里。',
-    '不要复述状态数据，也不要写"正文""第一段""草稿"这类结构提示。'
+    '不要复述状态数据，也不要写"正文""第一段""草稿"这类结构提示。',
+    /* 台词来源设成「正文对白」时，装置只念引号里的内容 —— 这条约定直接决定它念得到什么。
+       模式名与环境音单独点名，是因为正文里"拨到「暴雨」"是很自然的写法，
+       而它一旦被念出来，玩家听到的就是一句莫名其妙的档位名。 */
+    '角色说出口的话一律用「」包住，一句一行；引号里只放嘴上说的话，'
+      + '不放动作神态、不放模式名（暴雨、脉冲这类）、不放嗡鸣与电流声。'
   ].join('\n');
 
   function cleanReply(text) {
@@ -4950,13 +5005,18 @@ textarea{
      脚本解析后把面板切到那一档——所以是"读完回复界面才变"，而不是反过来。 */
   function decidePrompt() {
     var cn = charName();
+    /* 「语音」字段只有在「台词来源 = AI 生成」时才被念得出来。
+       正文档下它写了也没人听，所以整段约束不注入 —— 省下的 token
+       够正文多写两句对白，也免得模型把力气花在没人听的地方。 */
+    var needVoice = (voiceSrcOf() === 'ai');
     var L = [
       '【这一轮由你决定装置怎么用】',
       '遥控器在 ' + cn + ' 手里。玩家按下的只是一个"开始"的信号，'
         + '具体调到什么档、想达到什么效果，由你按 ' + cn + ' 的性格与此刻的心情决定。',
       '',
       '正文写完之后，另起一行附上装置读数，格式必须完全照下面这样：',
-      '<TOY>开关=开|模式=潮汐|频率=45|强度=70|说明=想让你在人前先开口求他|心声=嘴上说着求我，其实自己也快撑不住了|语音=乖，坐好，别出声</TOY>',
+      '<TOY>开关=开|模式=潮汐|频率=45|强度=70|说明=想让你在人前先开口求他|心声=嘴上说着求我，其实自己也快撑不住了'
+        + (needVoice ? '|语音=乖，坐好，别出声' : '') + '</TOY>',
       '',
       '规则：',
       '· 开关填「开」或「关」。填「关」表示这一轮把装置停了。',
@@ -4965,32 +5025,39 @@ textarea{
       '· 说明用一句短话写清这次想干什么、想看到什么样的反应。',
       '· 心声写 ' + cn + ' 此刻心里真正的想法，不是嘴上说的话，一句话、25 字以内。'
         + '面板上只显示这一句，所以它要能独立看懂。',
-      '· 语音填 ' + cn + ' 这一轮**说出口**的话。**每一轮都必须填，不能留空** —— 它会被直接念成声音。',
-      '· 语音要写成 **2 到 3 行**，每行都是一句能念出来的话，**每行开头都要带情绪标记**。',
-      '· 每行 **35-48 字**，长度照着下面正确例子来 —— 太短会"啊……"一下就没了，'
-        + '太长会变成朗读。用省略号、破折号把句子断开，让它在气声里一段段漏出来。',
-      '· 标记用方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] '
-        + '[nervous] [pleased] [chuckling] [sighing]）或中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；'
-        + '一行最多叠 3 个。',
-      '· 三行之间要有推进：从**试探**到**说透**，最后一句可以是**退让、打岔或撒娇**收尾。',
-      '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、'
-        + '压在喉咙里的碎音。**不要写动作、不要写旁白、不要用括号包住叙述** ——'
-        + '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里。',
-      '· 语音里**不许出现读数里的任何信息** —— 不许写模式名（脉冲／潮汐／心跳／渐强／乱流／撩拨／暴雨／临界／冲刺）、'
-        + '开关状态、频率、强度、累积、阶段。那些只写在上面那几个字段里。'
-        + '**「暴雨」「撩拨」这种词单独出现时会被当成噪音念出来**，玩家听到的就是一句莫名其妙的档位名。',
-      '· 语音里**不许写环境音和装置声** —— 嗡嗡声、嗡鸣、电流声、马达声、震动声、底噪，'
-        + '这些都不是 ' + cn + ' 说出口的话。它们只写在正文里。',
-      '· 语音要写成 ' + cn + ' **直接说出口的话**，不要叙述：'
-        + '不要出现"她/他/它/自己"，也不要写"咬着牙""撑着""忍不住""慢慢"这种描写的动作 ——'
-        + '一句台词是关于"我"和"你"的，不是关于第三个人在做什么的。',
-      '· 反例（这些都会被丢掉，别写）：[喘息] 嗡嗡声还在继续 ／ [气声] 她咬着牙想维持住 ／ [气声] 撩拨',
-      '· 正确例子（照这个**长度和格式**写：2-3 行，每行开头都是方括号标记）：',
-      '　[soft tone][whispering] 你怎么还没睡呀……我都醒了有一会儿了，听着你在那边翻身……',
-      '　[inhale] 我只是……有点想你了。也没别的事，就是忽然想听听你的声音，没打扰你吧？',
-      '　[short pause][chuckling] 好啦，别笑我……我说完这句就不说了，你先去忙你的……',
-      '· 这一行是给装置读的，正文里绝对不要提到它，也不要解释这是什么。'
+      '· 语音这一项：' + (needVoice
+        ? '按下面的要求认真填。'
+        : '留空就行 —— 当前只念正文里引号包住的对白，写在这里的话没人听。')
     ];
+    if (needVoice) {
+      L = L.concat([
+        '· 语音填 ' + cn + ' 这一轮**说出口**的话。**每一轮都必须填，不能留空** —— 它会被直接念成声音。',
+        '· 语音要写成 **2 到 3 行**，每行都是一句能念出来的话，**每行开头都要带情绪标记**。',
+        '· 每行 **35-48 字**，长度照着下面正确例子来 —— 太短会"啊……"一下就没了，'
+          + '太长会变成朗读。用省略号、破折号把句子断开，让它在气声里一段段漏出来。',
+        '· 标记用方括号，可以写英文固定标记（[panting] [gasping] [sobbing] [whispering] [soft tone] '
+          + '[nervous] [pleased] [chuckling] [sighing]）或中文描述（[气声] [颤抖] [压低的声音] [黏腻]）；'
+          + '一行最多叠 3 个。',
+        '· 三行之间要有推进：从**试探**到**说透**，最后一句可以是**退让、打岔或撒娇**收尾。',
+        '· 语音里**只写能念出来的话**：拟声（哈啊……不、不行……）、短命令（乖，坐好。求我。）、'
+          + '压在喉咙里的碎音。**不要写动作、不要写旁白、不要用括号包住叙述** ——'
+          + '"低下头""呼吸乱了一拍"这类是给眼睛看的，写在正文和心声里。',
+        '· 语音里**不许出现读数里的任何信息** —— 不许写模式名（脉冲／潮汐／心跳／渐强／乱流／撩拨／暴雨／临界／冲刺）、'
+          + '开关状态、频率、强度、累积、阶段。那些只写在上面那几个字段里。'
+          + '**「暴雨」「撩拨」这种词单独出现时会被当成噪音念出来**，玩家听到的就是一句莫名其妙的档位名。',
+        '· 语音里**不许写环境音和装置声** —— 嗡嗡声、嗡鸣、电流声、马达声、震动声、底噪，'
+          + '这些都不是 ' + cn + ' 说出口的话。它们只写在正文里。',
+        '· 语音要写成 ' + cn + ' **直接说出口的话**，不要叙述：'
+          + '不要出现"她/他/它/自己"，也不要写"咬着牙""撑着""忍不住""慢慢"这种描写的动作 ——'
+          + '一句台词是关于"我"和"你"的，不是关于第三个人在做什么的。',
+        '· 反例（这些都会被丢掉，别写）：[喘息] 嗡嗡声还在继续 ／ [气声] 她咬着牙想维持住 ／ [气声] 撩拨',
+        '· 正确例子（照这个**长度和格式**写：2-3 行，每行开头都是方括号标记）：',
+        '　[soft tone][whispering] 你怎么还没睡呀……我都醒了有一会儿了，听着你在那边翻身……',
+        '　[inhale] 我只是……有点想你了。也没别的事，就是忽然想听听你的声音，没打扰你吧？',
+        '　[short pause][chuckling] 好啦，别笑我……我说完这句就不说了，你先去忙你的……'
+      ]);
+    }
+    L.push('· 这一行是给装置读的，正文里绝对不要提到它，也不要解释这是什么。');
 
     // 玩家按了「请求停下」：这一轮的重点从"怎么调"变成"肯不肯放"
     if (S.beg > 0) {
@@ -5111,7 +5178,7 @@ textarea{
 
   function innerGenerate() {
     if (!BRIDGE.ready) { fakeReact('auto'); return; }
-    var holder = pushMsg('ai', '');
+    var holder = pushMsg('ai', '', null);   // 占位空壳：不出声，等回复到了再整条重建
     var bubble = holder.querySelector('.bubble');
     bubble.classList.add('blink', 'now');
     // 流式期间只往这个 span 里写字：这样结束后能整条换成"台词 + 说明 + 播放键"的结构，
@@ -5236,16 +5303,14 @@ textarea{
     var who = kind === 'ai' ? heartLabel() : (kind === 'me' ? '你' : '装置');
     el.innerHTML = '<div class="who"><i></i>' + who + '</div><div class="bubble"></div>';
 
-    /* 台词来源：正文对白 > 传进来的 speak > 台词库。
-       正文有对话时，念出来的就是你在正文里读到的那一句 —— 视听一致。 */
-    var voiceText = String(speak || '').trim();
-    var fromBody = '';
-    if (kind === 'ai' && String(body || '').trim()) {
-      fromBody = extractSpeech(body, voiceKind(), S.stage);
-    }
-    if (fromBody && voiceish(fromBody)) voiceText = fromBody;
-    else if (!voiceText || !voiceish(voiceText)) {
-      voiceText = fromBody || voiceFor(voiceText, S.stage, null, body).text;
+    /* 只有 TA 的气泡才配台词。装置播报（「手动触发」「装置启动」「切换模式 → 暴雨」）
+       是界面反馈，不是谁说的话 —— 以前这里不分类型地兜底到台词库，于是玩家每按一次
+       「立即反应一次」，装置气泡下面就凭空挂出一句台词，还跟着自动播放。
+       speak 传 null 表示"这只是个占位空壳"（流式期间先摆出来的那个气泡），照样不配台词。 */
+    var voiceText = '';
+    if (kind === 'ai' && speak !== null) {
+      voiceText = String(speak || '').trim();
+      if (!voiceish(voiceText)) voiceText = voiceFor('', S.stage, null, body).text;
     }
 
     var rec = { root: el, text: String(text || ''), voice: voiceText, prev: '' };
@@ -5290,7 +5355,7 @@ textarea{
   }
   /* 播放条 */
   function vbarFor(rec, oldBar, autoplay) {
-    var vm = voiceFor(rec.voice, S.stage);
+    var vm = voicePick();   // 音色只由"谁在说话"决定，不必再过一遍台词来源
     if (oldBar) oldBar.remove();
     var bar = document.createElement('div');
     bar.className = 'vbar';
@@ -5300,12 +5365,12 @@ textarea{
     b.innerHTML = '<span class="ico">▶</span>语音播放';
     b.addEventListener('click', function () {
       b.classList.add('on');
-      VOC.say(rec.voice, { vol: S.voiceVol / 100, voice: voiceFor(rec.voice, S.stage).voice });
+      VOC.say(rec.voice, { vol: S.voiceVol / 100, voice: vm });
     });
     bar.appendChild(b);
     rec.root.appendChild(bar);
     if (autoplay && S.voiceAuto) {
-      VOC.say(rec.voice, { vol: S.voiceVol / 100, voice: vm.voice });
+      VOC.say(rec.voice, { vol: S.voiceVol / 100, voice: vm });
       b.classList.add('on');
     }
     return bar;
@@ -6303,10 +6368,15 @@ textarea{
     }
     var note = $('#s-voiceai-note');
     if (note) {
-      note.innerHTML = S.voiceAI
-        ? '<b>当前：AI 生成。</b>随正文一起写一句「语音」进来，不多花一次额度；拿不到就自动退回台词库。'
-        : '<b>当前：台词库。</b>零费用、零延迟，台词按阶段与作用对象取，每句自动配情绪标记；'
-          + '打开 AI 生成则改为让模型写，更贴但更慢。';
+      var _vs = voiceSrcOf();
+      note.innerHTML = (_vs === 'body')
+        ? '<b>当前：正文对白。</b>只念正文里引号包住的台词，「读到的」和「听到的」是同一句；'
+          + '正文这一轮没写对白就不出声，不会替你补一句。'
+        : (_vs === 'ai'
+          ? '<b>当前：AI 生成。</b>只念读数里那一行「语音」——AI 随正文一起写，不多花一次额度；'
+            + '它没写就这一轮不出声。'
+          : '<b>当前：台词库。</b>只念本地台词库，按阶段与作用对象取，每句自动配情绪标记；'
+            + '零费用、零延迟，但和正文对不上。');
     }
     // 设置页那条只是"怎么开"的入口提示，每次刷新都按当前状态重写
     var h = $('#voice-hint');
@@ -7140,7 +7210,7 @@ textarea{
     var fm = $('#s-tts-format'); if (fm) fm.textContent = S.ttsFormat;
     var vol = $('#s-voicevol'); if (vol) vol.value = S.voiceVol;
     var spd = $('#s-tts-speed'); if (spd) spd.value = S.ttsSpeed;
-    var ai = $('#s-voiceai'); if (ai) ai.textContent = S.voiceAI ? 'AI 生成' : '台词库';
+    var ai = $('#s-voiceai'); if (ai) ai.textContent = VOICE_SRC_LABEL[voiceSrcOf()];
     var swa = $('#s-voiceauto'); if (swa) swa.classList.toggle('on', S.voiceAuto);
     var sww = $('#s-voicewarm'); if (sww) sww.classList.toggle('on', S.voiceWarm);
     paintAutoWarn();
@@ -7496,7 +7566,10 @@ textarea{
     if (VOC.buzzMode() && S.on) VOC.tick(S.env);
     if (VOC.voiceOn()) {
       if (!S.ttsTarget) { toast('先填「合成地址」'); return; }
-      var pick = voiceFor('', S.stage);
+      /* 试听走台词库，不看「台词来源」：这两颗按钮是拿来验通道的，
+         正文档下正文里没有对白，照台词来源取会取到空、什么都听不见。 */
+      var kind = voiceKind();
+      var pick = { text: libPick(kind, S.stage), kind: kind, voice: voicePick() };
       var h = $('#vs-try-hint');
       if (h) {
         h.textContent = '测试台词：' + pick.text + '（'
@@ -7852,11 +7925,15 @@ textarea{
     this.textContent = S.ttsFormat;
     persist();
   });
+  /* 台词来源：点一下换下一档 —— 正文对白 → AI 生成 → 台词库 → 正文。 */
   onEl('#s-voiceai', 'click', function () {
-    S.voiceAI = !S.voiceAI;
+    var cur = VOICE_SRC_ORDER.indexOf(voiceSrcOf());
+    S.voiceSrc = VOICE_SRC_ORDER[(cur + 1) % VOICE_SRC_ORDER.length];
     bindVoice();
     persist();
-    toast(S.voiceAI ? '台词改为 AI 生成（贴近角色，但要等）' : '台词改回本地库');
+    toast('台词来源：' + VOICE_SRC_LABEL[S.voiceSrc] + '　'
+      + (S.voiceSrc === 'body' ? '只念正文里的对白'
+        : S.voiceSrc === 'ai' ? '只念读数里的「语音」' : '只念本地台词库'), 2600);
   });
   function voiceSwitch(sel, key) {
     var el = $(sel);
@@ -8088,7 +8165,7 @@ textarea{
     toy_cfg_voice: 'toy_out_voice',
     toy_cfg_voicevol: 'toy_out_vol',
     toy_cfg_voiceauto: 'toy_out_auto',
-    toy_cfg_voiceai: 'toy_out_ai',
+    toy_cfg_voicesrc: 'toy_out_src',
     toy_cfg_voicewarm: 'toy_out_warm',
     toy_cfg_warmset: 'toy_out_warmset',
     toy_cfg_haptap: 'toy_out_haptap',
@@ -8162,7 +8239,7 @@ textarea{
       toy_out_auto: S.voiceAuto,
       toy_out_warm: S.voiceWarm,
       toy_out_warmset: !!S.warmTouched,   // 一起写进来：lsSave 是整份覆盖，漏了它会把预热标记冲掉
-      toy_out_ai: S.voiceAI,
+      toy_out_src: S.voiceSrc,
       toy_out_haptap: S.hapticTap,
       toy_out_hapfol: S.hapticFollow,
       toy_out_audio: S.audio,
@@ -8283,7 +8360,7 @@ textarea{
     /* 预热：只有用户亲手改过（toy_out_warmset）才沿用存档值。
        老存档里存的是旧默认 true，直接用会替用户继续花额度，所以那种情况落回新默认 false。 */
     if (g.toy_out_warmset === true) { S.warmTouched = true; if (typeof g.toy_out_warm === 'boolean') S.voiceWarm = g.toy_out_warm; }
-    if (typeof g.toy_out_ai === 'boolean') S.voiceAI = g.toy_out_ai;
+    if (VOICE_SRC_ORDER.indexOf(g.toy_out_src) >= 0) S.voiceSrc = g.toy_out_src;
     if (typeof g.toy_out_haptap === 'boolean') S.hapticTap = g.toy_out_haptap;
     if (typeof g.toy_out_hapfol === 'boolean') S.hapticFollow = g.toy_out_hapfol;
     if (typeof g.toy_out_audio === 'boolean') S.audio = g.toy_out_audio;
@@ -8347,7 +8424,7 @@ textarea{
     if (VOICE_IDS.indexOf(v.toy_cfg_voice) >= 0) S.voice = v.toy_cfg_voice;
     if (typeof v.toy_cfg_voicevol === 'number') S.voiceVol = clamp(v.toy_cfg_voicevol, 0, 100);
     if (typeof v.toy_cfg_voiceauto === 'boolean') S.voiceAuto = v.toy_cfg_voiceauto;
-    if (typeof v.toy_cfg_voiceai === 'boolean') S.voiceAI = v.toy_cfg_voiceai;
+    if (VOICE_SRC_ORDER.indexOf(v.toy_cfg_voicesrc) >= 0) S.voiceSrc = v.toy_cfg_voicesrc;
     if (typeof v.toy_cfg_warmset === 'boolean') S.warmTouched = v.toy_cfg_warmset;
     if (S.warmTouched && typeof v.toy_cfg_voicewarm === 'boolean') S.voiceWarm = v.toy_cfg_voicewarm;
     if (typeof v.toy_cfg_proxy === 'string') S.ttsProxy = v.toy_cfg_proxy;   // 已废弃键，同上
