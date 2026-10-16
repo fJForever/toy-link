@@ -1,5 +1,5 @@
 /* ============================================================
- * TOY·LINK 装置模拟器 v1.13.45 · 酒馆助手脚本
+ * TOY·LINK 装置模拟器 v1.13.46 · 酒馆助手脚本
  *
  * 由 index.html 自动构建，请勿直接手改本文件；改 index.html 后重跑：
  *   node 工具-构建脚本版.js
@@ -16,7 +16,7 @@ function TOYLINK_BOOT() {
    * 而且自更新本来存在的意义就是"修好下一版"，它自己却先被卡死了。
    * 放到最前之后，只要脚本还能执行到第一行，就能把新版写回脚本库。 */
   (function () {
-    var VERSION = "1.13.45";
+    var VERSION = "1.13.46";
 /* =========================================================
      * 自更新
      *
@@ -234,11 +234,11 @@ function TOYLINK_BOOT() {
    *   用户换了地址、也刷新了，界面却一点没变，因为旧实例还在，新版一进门就退出。
    *   这里把旧实例拆掉，让新版接管。 */
   if (window.__TOYLINK__ && document.getElementById("__toylink_host__")) {
-    if (window.__TOYLINK__.version === "1.13.45") {
+    if (window.__TOYLINK__.version === "1.13.46") {
       window.__TOYLINK__.toggle();
       return;
     }
-    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.45"); } catch (e) {}
+    try { console.log("[TOY·LINK] 发现旧版 " + window.__TOYLINK__.version + "，拆掉它换成 1.13.46"); } catch (e) {}
     try { if (window.__TOYLINK__.stop) window.__TOYLINK__.stop(); } catch (e) { /* 旧版可能没有 stop */ }
     try {
       var oldHost = document.getElementById("__toylink_host__"); if (oldHost) oldHost.remove();
@@ -395,7 +395,7 @@ function TOYLINK_BOOT() {
   }, 2500);
 
   /* ==================== 悬浮球：紫色小 lelo（源码见构建脚本里的 TOY_BALL_RUNTIME） ==================== */
-  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.45";
+  var BALL_ID = "__toylink_ball__", TK_VERSION = "1.13.46";
   var TK_S = null;   // 主脚本跑起来后指向它的装置状态 S
   var TK_SPRING_LIN = "linear(0, 0.0235, 0.084, 0.1688, 0.2674, 0.3716, 0.4753, 0.574, 0.6646, 0.7453, 0.8153, 0.8743, 0.9228, 0.9614, 0.9911, 1.0131, 1.0285, 1.0384, 1.0439, 1.0459, 1.0453, 1.0429, 1.0392, 1.0348, 1.03, 1.0252, 1.0206, 1.0164, 1.0125, 1.0092, 1.0064, 1.004, 1.0022, 1.0007, 0.9996, 0.9988, 0.9983, 0.998, 0.9979, 0.9979, 1)", TK_SPRING_MS = 728;
   function TOY_BALL_SVG(u) {
@@ -724,7 +724,7 @@ function TOYLINK_BOOT() {
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.45';
+  var VERSION = '1.13.46';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -4682,16 +4682,30 @@ function TOYLINK_BOOT() {
       }
       b.addEventListener('click', function () {
         var self = this;
-        var done = function () {
+        var flash = function (msg) {
           self.classList.add('ok');
           setTimeout(function () { self.classList.remove('ok'); }, 900);
-          toast('已复制 ' + m.mark, 1400);
+          toast(msg, 2400);
         };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(m.mark).then(done, function () { fallbackCopy(m.mark, done); });
-        } else {
-          fallbackCopy(m.mark, done);
-        }
+        copyTextAsync(m.mark, function () {
+          flash('已复制 ' + m.mark);
+        }, function (txt) {
+          /* 剪贴板写不进去时不能只说"失败了" —— 给一条真能用的路：
+             先试着把标记直接插进「自定义试听」的文本框（同一个页面，用户本来就是要往那儿写）。 */
+          var ta = $('#s-custom-text');
+          if (ta) {
+            var cur = String(ta.value || '');
+            ta.value = (cur === '' || /\n$/.test(cur)) ? (cur + txt + ' ') : (cur.replace(/\s+$/, '') + ' ' + txt + ' ');
+            /* 滚动到它：标记按钮在「自定义试听」上面一段，不滚过去用户看不到"放进去了" */
+            try { ta.scrollIntoView({ block: 'center' }); } catch (e) { /* noop */ }
+            try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) { /* noop */ }
+            if (typeof paintLen === 'function') paintLen();
+            flash('这个环境不让写剪贴板，已把 ' + txt + ' 放进下面「自定义试听」的文本框');
+            return;
+          }
+          if (revealForManualCopy(txt)) flash('剪贴板被禁，' + txt + ' 已选中，按 Ctrl/Cmd+C 复制');
+          else flash('复制没成功，请手动输入 ' + txt);
+        });
       });
       box.appendChild(b);
     });
@@ -5175,19 +5189,59 @@ function TOYLINK_BOOT() {
     else toast('未检测到酒馆环境');
   });
   $('#c-copy').addEventListener('click', function () {
-    var t = stateText();
-    var done = function () { toast('快照已复制'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(t).then(done, function () { fallbackCopy(t, done); });
-    } else fallbackCopy(t, done);
+    copyToClipboard(stateText(), '快照已复制');
   });
-  function fallbackCopy(t, cb) {
+  /* ---------- 复制文本 ----------
+     沙箱 iframe 里写剪贴板经常是"假成功"：execCommand('copy') 失败时只返回 false、
+     不抛错，而 navigator.clipboard.writeText 在部分宿主里会 resolve 但没写进去。
+     老的 fallbackCopy 没看返回值，于是弹了「已复制」而剪贴板是空的 —— 用户粘不上。
+     现在逐级尝试并把结果如实返回；全失败时把文本选中亮出来，让人按 Ctrl/Cmd+C 或长按复制。 */
+  function revealForManualCopy(t) {
     try {
       var ta = document.createElement('textarea');
-      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      MOUNT(ta); ta.select();
-      document.execCommand('copy'); ta.remove(); cb();
-    } catch (e) { toast('复制失败，请手动选择'); }
+      ta.value = t; ta.readOnly = true;
+      ta.setAttribute('style', 'position:fixed; left:8px; right:8px; bottom:8px; height:46px; z-index:5;'
+        + 'font-size:12px; padding:6px 8px; border:1px solid var(--line); border-radius:8px;'
+        + 'background:rgba(20,8,24,.96); color:var(--ink); box-sizing:border-box;');
+      var host = DOC.body || (WIN.document && WIN.document.body);
+      if (!host) return false;
+      host.appendChild(ta);
+      try { ta.scrollIntoView({ block: 'center' }); } catch (e) { /* noop */ }
+      try { ta.focus(); } catch (e) { /* noop */ }
+      try { ta.select(); ta.setSelectionRange(0, t.length); } catch (e) { /* noop */ }
+      setTimeout(function () { try { ta.remove(); } catch (e) { /* noop */ } }, 9000);
+      return true;
+    } catch (e) { return false; }
+  }
+  /* 返回 done() 表示"已经进了剪贴板"；fail(t) 表示没写成功，由调用方给退路。 */
+  function copyTextAsync(t, done, fail) {
+    t = String(t == null ? '' : t);
+    var ok = function () { done && done(); };
+    var no = function () { fail ? fail(t) : (done && done()); };
+    var legacy = function () {
+      var wrote = false;
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = t; ta.setAttribute('readonly', '');
+        ta.setAttribute('style', 'position:fixed; top:0; left:0; width:1px; height:1px; opacity:0;');
+        (DOC.body || DOC.documentElement).appendChild(ta);
+        ta.focus(); ta.select();
+        try { ta.setSelectionRange(0, t.length); } catch (e) { /* noop */ }
+        wrote = !!(DOC.execCommand && DOC.execCommand('copy'));   // ← 关键：以前没查这个返回值
+        ta.remove();
+      } catch (e) { wrote = false; }
+      wrote ? ok() : no();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(t).then(ok, legacy);
+    } else legacy();
+  }
+  // 复制 + 统一反馈：#c-copy 那类按钮用它
+  function copyToClipboard(t, okMsg) {
+    copyTextAsync(t, function () { toast(okMsg || '已复制', 1600); }, function (txt) {
+      if (revealForManualCopy(txt)) toast('这个环境不让写剪贴板 —— 文本已选中，按 Ctrl/Cmd+C 复制', 6000);
+      else toast('复制没成功，请手动记下：' + String(txt).slice(0, 40), 6000);
+    });
   }
   $('#c-wipe').addEventListener('click', function () {
     $('#feed').innerHTML = feedEmptyHtml();
@@ -5816,12 +5870,12 @@ function TOYLINK_BOOT() {
       return;
     } catch (e2) { /* 落到下一级 */ }
     /* ③ 复制地址并指路：至少让用户能自己粘到浏览器里 */
-    var done = function () { toast('跳转被拦下了。地址已复制：' + url, 5600); };
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(url).then(done, function () { fallbackCopy(url, done); });
-      } else fallbackCopy(url, done);
-    } catch (e3) { toast('跳转被拦下了，请手动打开：' + url, 6000); }
+    copyTextAsync(url, function () {
+      toast('跳转被拦下了。地址已复制：' + url, 5600);
+    }, function (txt) {
+      if (revealForManualCopy(txt)) toast('跳转被拦下了，剪贴板也不可用 —— 地址已选中，复制它：' + txt, 7000);
+      else toast('跳转被拦下了，请手动打开：' + txt, 7000);
+    });
   }
 
   (function bindPlatform() {
@@ -6703,10 +6757,7 @@ function TOYLINK_BOOT() {
   onEl('#c-log-copy', 'click', function () {
     var t = VOC.logText();
     if (!t) { toast('日志是空的'); return; }
-    var done = function () { toast('日志已复制（' + VOC.logCount() + ' 条）'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(t).then(done, function () { fallbackCopy(t, done); });
-    } else fallbackCopy(t, done);
+    copyToClipboard(t, '日志已复制（' + VOC.logCount() + ' 条）');
   });
 
   /* =========================================================
@@ -8089,7 +8140,7 @@ function TOYLINK_BOOT() {
   // 装置运行时的动态由悬浮球自己的循环直接读 S（见 TOY_BALL_RUNTIME），这里不用再轮询面板
 
   window.__TOYLINK__ = {
-    version: "1.13.45",
+    version: "1.13.46",
     host: host, root: root, ball: ball, page: PAGE,
     resetLayout: TK_API.resetLayout,   // 面板位置不对劲时，控制台敲 __TOYLINK__.resetLayout()
     open: open, collapse: collapse, toggle: toggle,
