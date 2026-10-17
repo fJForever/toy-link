@@ -1320,10 +1320,6 @@ textarea{
         <div class="sw on" id="s-auto"><i></i></div>
       </div>
       <div class="field">
-        <div class="lb"><b>注入状态提示词</b><small>每次生成前把装置状态放到提示词最前，角色不会忘记自己正处在什么状态。</small></div>
-        <div class="sw on" id="s-inject"><i></i></div>
-      </div>
-      <div class="field">
         <div class="lb"><b>生成期间冻结剧情时间</b><small>默认打开。AI 出字期间累积值暂停推进，生成一结束立刻接着走，免得「换阶段」和「回复」撞在同一刻。波形照常跳动。</small></div>
         <div class="sw on" id="s-freeze"><i></i></div>
       </div>
@@ -1336,7 +1332,11 @@ textarea{
         <div class="sw on" id="s-stage"><i></i></div>
       </div>
       <div class="field">
-        <div class="lb"><b>让 AI 一直戴着</b><small>开：脚本每次启动都把这套设定写好、挂到当前角色卡上，内容跟着你的设置更新 —— AI 从此一直知道这台装置存在。<br>关：脚本不再碰它。已经挂上的会留着继续生效，彻底卸载用下面那两颗按钮。</small></div>
+        <div class="lb"><b>每次生成都告诉 AI 装置状态</b><small>开：点启动、切模式、催反应 —— 只要是脚本发起的那次生成，都会先把当前状态（戴在谁身上、什么模式、频率强度、第几阶段）放在提示词最前，面板和正文才对得上。<br>关：AI 完全不知道装置在跑，正文回到普通的角色扮演。</small></div>
+        <div class="sw on" id="s-inject"><i></i></div>
+      </div>
+      <div class="field">
+        <div class="lb"><b>让 AI 一直戴着</b><small>开：脚本每次启动都把这套设定写好、挂到当前角色卡上，内容跟着你的设置更新 —— 这条管的是<b>你自己在酒馆输入框里打字</b>的时候，AI 也知道这台装置存在（上面那条只管脚本发起的生成）。<br>关：脚本不再碰它。已经挂上的会留着继续生效，彻底卸载用下面那两颗按钮。</small></div>
         <div class="sw on" id="s-wb"><i></i></div>
       </div>
       <div class="field col">
@@ -1493,7 +1493,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.57';
+  var VERSION = '1.13.58';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
