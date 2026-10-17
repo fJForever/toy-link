@@ -451,6 +451,15 @@ input[type=range]::-moz-range-thumb{
 }
 
 /* ---------- 电源键 ---------- */
+/* 「先说一句再催」：底栏上方整行输入。留空就是纯粹的催一下，行为和以前一模一样。 */
+.nowline{flex:none;padding:0 16px 10px}
+.nowline input{
+  width:100%;box-sizing:border-box;padding:9px 11px;border-radius:11px;
+  font-size:13px;border:1px solid var(--line);background:rgba(0,0,0,.35);outline:none;
+  -webkit-appearance:none;appearance:none;
+}
+.nowline input::placeholder{color:var(--dim-2);opacity:1}
+.nowline input:focus{border-color:var(--hot-a55)}
 .powerbar{
   position:relative;z-index:5;flex:none;display:flex;gap:10px;
   padding:12px 16px calc(var(--safe-b) + 12px);
@@ -1457,6 +1466,13 @@ textarea{
   <!-- 两颗各占一半。右边那颗只催一条回复，不动装置状态 ——
        以前这里是「冲击一次」，同样是生成，却顺手把阶段值 +26，
        想让 TA 说句话都得先付出状态代价，用起来别扭。 -->
+  <!-- 先打一句话再催反应：文字会作为你说的话进聊天，跟装置状态一起交给 AI。
+       留空点「立即反应一次」就还是老行为 —— 纯粹催一下，不多发任何消息。 -->
+  <div class="nowline">
+    <input id="now-text" type="text" maxlength="120" autocomplete="off"
+           placeholder="（可选）先说一句，再催 TA 反应">
+  </div>
+
   <div class="powerbar">
     <button class="power" id="power">启 动</button>
     <button class="ghost act" id="btn-now" title="立刻让 TA 反应一次（不改变装置状态）">立即反应一次</button>
@@ -1477,7 +1493,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.56';
+  var VERSION = '1.13.57';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -4647,7 +4663,7 @@ textarea{
     }], { once: true });
   }
 
-  function react(kind, force) {
+  function react(kind, force, said) {
     if (!S.auto && !force) return;
 
     // 装置没在运行时调参数只是预设置，不叫 AI 说话。
@@ -4678,9 +4694,9 @@ textarea{
     pushMsg('sys', kindLabel(kind));
 
     if (S.drive === 'inner') {
-      innerGenerate();
+      innerGenerate(said);
     } else {
-      floorTrigger();
+      floorTrigger(said);
     }
   }
 
@@ -5032,10 +5048,13 @@ textarea{
    * 酒馆在生成期间会拒绝 /trigger（弹「在回复生成时无法运行 /trigger 命令」），
    * 而 generate 走的是酒馆助手自己的请求通道，不吃这个限制。
    * 回复拿到后用 createChatMessages 落进聊天记录，观感与 /trigger 一致。 */
-  function generateToChat() {
+  function generateToChat(said) {
     markBusy();
     holdOn();          // 我们发起的生成，冻结由自己开关
     markPending(true); // 遥控器在 TA 手里时，先摆出"等 TA 决定"的中间态
+    /* 玩家在底栏输入的那句话先落进聊天：这样 AI 读到的是"用户刚说了这句"，
+       而不是把话塞在 system 注入里 —— 注入里的话模型会当成旁白，不会当作你在跟它说话。 */
+    if (said) { try { BRIDGE.addMsg({ role: 'user', message: said }); } catch (e) { /* noop */ } }
     var res = BRIDGE.gen({
       user_input: '（装置控制台同步，接着上一楼继续）',
       should_stream: false,
@@ -5063,11 +5082,11 @@ textarea{
     if (res && res.then) res.then(done, function () { markIdle(); holdOff(); markPending(false); settleBeg(false); }); else done('');
   }
 
-  function floorTrigger() {
+  function floorTrigger(said) {
     if (!BRIDGE.ready) { fakeReact('auto'); return; }
 
     // 默认走 generate：不会撞上酒馆的生成锁，也就没有那条报错
-    if (S.sendMode === 'generate' && th('generate')) { generateToChat(); return; }
+    if (S.sendMode === 'generate' && th('generate')) { generateToChat(said); return; }
 
     if (stBusy()) {
       // AI 正在生成，插队会撞上酒馆的「无法运行 /trigger」拦截
@@ -5076,12 +5095,16 @@ textarea{
       // 兜底：万一结束事件没来（中断、报错），12 秒后自己重试一次
       clearTimeout(PENDING_TIMER);
       PENDING_TIMER = setTimeout(function () {
-        if (PENDING) { PENDING = false; BUSY = false; floorTrigger(); }
+        if (PENDING) { PENDING = false; BUSY = false; floorTrigger(said); }
       }, 12000);
       return;
     }
     var payload = stateText();
     var fire = function () { BRIDGE.slash('/trigger'); };
+
+    /* 玩家那句话要在 /trigger 之前先落进聊天 —— 它是"你说的话"，不是旁白，
+       所以走聊天消息而不是塞进 system 注入。 */
+    if (said) { try { BRIDGE.addMsg({ role: 'user', message: said }); } catch (e) { /* noop */ } }
 
     // 首选：把状态作为 system 提示注入到最新位置，只对这一次生成有效。
     // 不写进聊天记录，AI 也不会把它当成玩家说的话来接。
@@ -5327,7 +5350,7 @@ textarea{
     return arr;
   }
 
-  function innerGenerate() {
+  function innerGenerate(said) {
     if (!BRIDGE.ready) { fakeReact('auto'); return; }
     var holder = pushMsg('ai', '', null);   // 占位空壳：不出声，等回复到了再整条重建
     var bubble = holder.querySelector('.bubble');
@@ -5352,6 +5375,9 @@ textarea{
     markBusy();
     holdOn();
     markPending(true);   // 遥控器在 TA 手里时，先摆出"等 TA 决定"的中间态
+    /* 玩家那句话先落进聊天：它是"你说的话"，走聊天消息而不是 system 注入 ——
+       塞进注入里模型会当成旁白，不会当作你在跟它说话。 */
+    if (said) { try { BRIDGE.addMsg({ role: 'user', message: said }); } catch (e) { /* noop */ } }
     var res = BRIDGE.gen({
       user_input: '（装置控制台同步，接着上一楼继续）',
       should_stream: true,
@@ -6088,11 +6114,20 @@ textarea{
      （以前这里是「冲击一次」：同样是生成，却顺手把阶段值 +26，
        想让 TA 说句话都得先付出状态代价。） */
   $('#btn-now').addEventListener('click', function () {
+    /* 输入框里有字就带上：它先作为"你说的话"落进聊天，再连同装置状态交给 AI。
+       没字就还是老行为 —— 纯粹催一下。 */
+    var box = $('#now-text');
+    var said = box ? String(box.value || '').trim() : '';
     HAP.tap(28);
     S.lastEvent = '玩家催了一次反应';
     pushAction(act('按下了面板上的「立即反应一次」', '按下了「立即反应一次」'));
-    toast('已催 TA 反应一次', 2000);
-    react('manual', true);
+    if (said) {
+      if (box) box.value = '';
+      toast('已发出去，等 TA 回应…', 2200);
+    } else {
+      toast('已催 TA 反应一次', 2000);
+    }
+    react('manual', true, said);
   });
 
   function toggleBtn(el, key, after) {
