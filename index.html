@@ -1336,7 +1336,7 @@ textarea{
         <div class="sw on" id="s-inject"><i></i></div>
       </div>
       <div class="field">
-        <div class="lb"><b>让 AI 一直戴着</b><small>开：脚本每次启动都把这套设定写好、挂到当前角色卡上，内容跟着你的设置更新 —— 这条管的是<b>你自己在酒馆输入框里打字</b>的时候，AI 也知道这台装置存在（上面那条只管脚本发起的生成）。<br>关：脚本不再碰它。已经挂上的会留着继续生效，彻底卸载用下面那两颗按钮。</small></div>
+        <div class="lb"><b>让 AI 一直戴着</b><small>开：这张卡<b>第一次按下「启动」</b>时才装上去 —— 只翻牌看看、没动装置，卡上不会留下任何东西；装上之后，每次启动脚本都跟着你的设置更新它。这条管的是<b>你自己在酒馆输入框里打字</b>时 AI 知不知道（上面那条只管脚本发起的生成）。<br>关：脚本不再碰它。已经挂上的会留着继续生效，彻底卸载用下面那两颗按钮。</small></div>
         <div class="sw on" id="s-wb"><i></i></div>
       </div>
       <div class="field col">
@@ -1493,7 +1493,7 @@ textarea{
   'use strict';
 
   /* 版本号：改动时改这里，构建脚本会把它写进脚本版与角色卡，并做版本备份 */
-  var VERSION = '1.13.58';
+  var VERSION = '1.13.59';
   var BUILD_DATE = '2026-10-14';
 
   /* ── 作用对象切到「自己」（装置戴在玩家身上）时替换的三条 ──
@@ -4816,7 +4816,16 @@ textarea{
     return list;
   }
 
-  function syncWorldbook(silent) {
+  /* 把装置设定写进世界书并挂到当前角色卡。
+
+     mode（可选）决定"没这条件时怎么办"，默认是完整流程：
+       'updateOnly' —— 只在书已存在时更新内容，不新建。启动脚本时用这一档：
+                       打开脚本不等于要用装置，不玩的角色卡上不该凭空多出一本书。
+       'bindOnly'   —— 只在书已存在时确保它挂着，不重写内容。按「启动」时用这一档：
+                       内容没变就别再覆盖一遍，玩家手改过的地方也不该被冲掉。
+
+     真正"新建"的时机只有两个：玩家第一次按「启动」，或者点「重新戴上装置」。 */
+  function syncWorldbook(silent, mode) {
     if (!S.manageWb || S.wbOpt || !BRIDGE.ready) return;
     var listFn = th('getWorldbookNames');
     var getFn = th('getWorldbook');
@@ -4850,7 +4859,16 @@ textarea{
     var names = [];
     try { names = listFn() || []; } catch (e) { names = []; }
 
-    if (names.indexOf(WB_NAME) < 0) { write(); return; }
+    if (names.indexOf(WB_NAME) < 0) {
+      /* 启动脚本那次只做"更新"不做"新建"：这张卡还没装过，就等玩家真的按下启动再说。
+         不这样的话，翻卡看一眼、试个角色都会在卡上留下一本书。
+         其余模式（按启动 / 点「重新戴上装置」）到这里就是新建 —— 那才是"第一次用上"。 */
+      if (mode === 'updateOnly') { console.log('[TOY·LINK] 这张卡还没装过装置设定，等你第一次按「启动」再装'); return; }
+      write(); return;
+    }
+
+    // 书已经在了。按「启动」时只要保证它挂着就行，别把内容再覆盖一遍
+    if (mode === 'bindOnly') { bind(); return; }
 
     // 已存在：只有带本脚本标记的才更新，避免覆盖用户自己的同名世界书
     if (!getFn) { bind(); return; }
@@ -5975,6 +5993,9 @@ textarea{
       '把遥控器拿在手里，按下了启动键：' + modeById(S.mode).name + ' 模式，频率 ' + hz().toFixed(1) + ' Hz，强度 ' + S.pow + '%'));
     startSilent();
     HAP.tap([0, 45, 70, 45]);   // 启动：两下，给点仪式感
+    /* 玩家真的按下启动，才算"用上了这台装置"—— 到这里才把装置设定挂到角色卡上。
+       书已经在了就只补绑定，不重写内容：这一下没改任何设定，内容没必要再覆盖一遍。 */
+    syncWorldbook(true, 'bindOnly');
     voiceOnStart();             // 语音已开的话，这里把振动音拉起来、顺手预热音集
     // 每一轮重新掷"这次要为难你几回"，2 或 3
     S.beg = 0;
@@ -8769,7 +8790,7 @@ textarea{
       txt.textContent = '已连接酒馆';
       bindTavernEvents();
       syncVars(true);
-      syncWorldbook(true);   // 通用设定：写进世界书并挂到当前角色卡
+      syncWorldbook(true, 'updateOnly');   // 只更新已经装过的那本；没装过就等玩家按「启动」
       $('#env-hint').textContent = '运行环境：酒馆助手 iframe，接口就绪。装置状态写进聊天变量，并作为系统提示注入给角色；回复走' +
         (S.drive === 'inner' ? '面板内生成' : '酒馆聊天') + '。';
     } else {
